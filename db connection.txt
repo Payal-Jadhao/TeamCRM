@@ -1,0 +1,19 @@
+postegree teamcrm : 
+
+c:\Users\payal\OneDrive\Desktop\CRM\backend\data\teamcrmdb.mv.db
+
+
+Driver Class: org.h2.Driver
+JDBC URL: jdbc:h2:file:./data/teamcrmdb (⚠️ dhyaan dein: jdbc:h2:~/test ko replace karke jdbc:h2:file:./data/teamcrmdb likhein)
+User Name: sa
+Password: (Khaali / Blank chhod dein)
+
+USERS (Users aur unke passwords)
+TASKS (Saare tasks, status, priorities)
+CUSTOMERS & DEALS (Clients aur business deals)
+TIME_LOGS (Employees ke timer aur work hours)
+AUDIT_LOGS (Delete/Edit ki history)
+Kisi bhi table ka data dekhne ke liye SQL query run kar sakte hain:
+sql
+SELECT * FROM USERS;
+SELECT * FROM TASKS;

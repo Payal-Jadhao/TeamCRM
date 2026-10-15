@@ -1,0 +1,49 @@
+# ==========================================
+# TeamCRM Git Ignore Rules
+# ==========================================
+
+# OS & Editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.iml
+*.swp
+*.swo
+*~
+
+# Java / Maven Build Artifacts
+backend/target/
+**/target/
+*.class
+*.jar
+*.war
+*.ear
+
+# Frontend Build & Node Modules
+frontend/node_modules/
+**/node_modules/
+frontend/dist/
+**/dist/
+dist-ssr/
+*.local
+
+# H2 Database Files
+backend/data/
+**/data/
+*.mv.db
+*.trace.db
+
+# Logs & Environment Files
+*.log
+logs/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+.env
+.env.local
+.env.production
+
+# Sensitive Local Scratch Notes
+pws.txt

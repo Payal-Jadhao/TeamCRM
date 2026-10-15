@@ -1,0 +1,63 @@
+@import "tailwindcss";
+
+@theme {
+  --color-bg-app: #FDFCFF;
+  --color-surface: #FFFFFF;
+  --color-purple-50: #F7F3FF;
+  --color-purple-100: #EFE8FF;
+  --color-purple-200: #E0D4FA;
+  --color-pink-50: #FFF5F9;
+  --color-pink-100: #FFE8F1;
+  --color-primary: #6D4FC9;
+  --color-primary-hover: #5B3FB3;
+  --color-accent-pink: #D9558A;
+  --color-text-primary: #2B2740;
+  --color-text-secondary: #6B6785;
+  --color-border-custom: #ECE8F5;
+}
+
+:root {
+  font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+  color: #2B2740;
+  background-color: #FDFCFF;
+  -webkit-font-smoothing: antialiased;
+}
+
+body {
+  margin: 0;
+  padding: 0;
+  background-color: #FDFCFF;
+  color: #2B2740;
+}
+
+/* Custom scrollbars */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: #F7F3FF;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #E0D4FA;
+  border-radius: 9999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #6D4FC9;
+}
+
+@keyframes timerPulse {
+  0%, 100% {
+    box-shadow: 0 0 0 0 rgba(109, 79, 201, 0.4);
+  }
+  50% {
+    box-shadow: 0 0 0 6px rgba(109, 79, 201, 0);
+  }
+}
+
+.running-timer-pulse {
+  animation: timerPulse 2s infinite;
+}
