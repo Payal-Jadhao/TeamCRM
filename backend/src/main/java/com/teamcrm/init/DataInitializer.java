@@ -183,13 +183,11 @@ public class DataInitializer implements CommandLineRunner {
         employee.setIsFirstLogin(false);
         employee = userRepository.save(employee);
 
-        // Ensure user's personal/Google accounts exist in system
+        // Ensure user's personal/Google accounts exist in system with known password Pass@123
         User payalDj = userRepository.findByEmail("payaldj2709@gmail.com").orElseGet(User::new);
         payalDj.setEmail("payaldj2709@gmail.com");
-        if (payalDj.getPasswordHash() == null) {
-            payalDj.setPasswordHash(passwordEncoder.encode("Pass@123"));
-            payalDj.setInitialPassword("Pass@123");
-        }
+        payalDj.setPasswordHash(passwordEncoder.encode("Pass@123"));
+        payalDj.setInitialPassword("Pass@123");
         payalDj.setFullName("Payal Jadhao");
         payalDj.setRole(employeeRole);
         payalDj.setTeamTag("FRONTEND");
@@ -199,10 +197,8 @@ public class DataInitializer implements CommandLineRunner {
 
         User payal2709 = userRepository.findByEmail("payaljadhao2709@gmail.com").orElseGet(User::new);
         payal2709.setEmail("payaljadhao2709@gmail.com");
-        if (payal2709.getPasswordHash() == null) {
-            payal2709.setPasswordHash(passwordEncoder.encode("Pass@123"));
-            payal2709.setInitialPassword("Pass@123");
-        }
+        payal2709.setPasswordHash(passwordEncoder.encode("Pass@123"));
+        payal2709.setInitialPassword("Pass@123");
         payal2709.setFullName("Payal Jadhao");
         payal2709.setRole(employeeRole);
         payal2709.setTeamTag("FRONTEND");
