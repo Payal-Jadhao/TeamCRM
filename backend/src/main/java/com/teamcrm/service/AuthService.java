@@ -39,17 +39,20 @@ public class AuthService {
     private final RoleRepository roleRepository;
     private final PasswordEncoder passwordEncoder;
     private final JwtUtils jwtUtils;
+    private final EmailService emailService;
 
     public AuthService(AuthenticationManager authenticationManager,
                        UserRepository userRepository,
                        RoleRepository roleRepository,
                        PasswordEncoder passwordEncoder,
-                       JwtUtils jwtUtils) {
+                       JwtUtils jwtUtils,
+                       EmailService emailService) {
         this.authenticationManager = authenticationManager;
         this.userRepository = userRepository;
         this.roleRepository = roleRepository;
         this.passwordEncoder = passwordEncoder;
         this.jwtUtils = jwtUtils;
+        this.emailService = emailService;
     }
 
     public AuthResponse login(LoginRequest request) {
@@ -149,11 +152,10 @@ public class AuthService {
         String otp = String.format("%06d", new Random().nextInt(900000) + 100000);
         otpCache.put(email, new OtpEntry(otp, Instant.now().plus(Duration.ofMinutes(10))));
 
-        System.out.println("=================================================");
-        System.out.println("🔑 PASSWORD RESET OTP for " + email + ": " + otp);
-        System.out.println("=================================================");
+        // Send OTP directly to user's registered email inbox
+        emailService.sendOtpEmail(email, otp);
 
-        return new SendOtpResponse(true, "A 6-digit verification code has been sent to " + email, otp);
+        return new SendOtpResponse(true, "A 6-digit verification code has been sent to your email address (" + email + "). Please check your inbox.");
     }
 
     @Transactional

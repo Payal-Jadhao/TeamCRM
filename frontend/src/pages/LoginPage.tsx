@@ -27,7 +27,6 @@ export const LoginPage: React.FC = () => {
   const [forgotLoading, setForgotLoading] = useState(false);
   const [forgotError, setForgotError] = useState('');
   const [forgotSuccess, setForgotSuccess] = useState('');
-  const [receivedOtpHint, setReceivedOtpHint] = useState<string | null>(null);
 
   // Google OAuth modal state
   const [isGoogleModalOpen, setIsGoogleModalOpen] = useState(false);
@@ -139,20 +138,10 @@ export const LoginPage: React.FC = () => {
     setForgotLoading(true);
     try {
       const res = await authApi.sendForgotPasswordOtp(trimmedEmail);
-      setForgotSuccess(res.message || 'OTP sent successfully to your registered email!');
-      if (res.otp) {
-        setReceivedOtpHint(res.otp);
-        localStorage.setItem('teamcrm_pending_otp_' + trimmedEmail, res.otp);
-      }
+      setForgotSuccess(res.message || `A 6-digit verification code has been sent to ${trimmedEmail}`);
       setForgotStep(2);
     } catch (err: any) {
-      console.warn('Backend send OTP error/offline, activating seamless verification code:', err);
-      // Fallback verification: Generate 6-digit secure code so user is never stuck
-      const fallbackOtp = Math.floor(100000 + Math.random() * 900000).toString();
-      setReceivedOtpHint(fallbackOtp);
-      localStorage.setItem('teamcrm_pending_otp_' + trimmedEmail, fallbackOtp);
-      setForgotSuccess(`A 6-digit verification code has been issued for ${trimmedEmail}`);
-      setForgotStep(2);
+      setForgotError(err.response?.data?.message || 'Failed to dispatch verification OTP. Please try again.');
     } finally {
       setForgotLoading(false);
     }
@@ -174,7 +163,6 @@ export const LoginPage: React.FC = () => {
     }
 
     const trimmedEmail = forgotEmail.trim().toLowerCase();
-    const storedFallbackOtp = localStorage.getItem('teamcrm_pending_otp_' + trimmedEmail);
 
     setForgotLoading(true);
     try {
@@ -184,8 +172,7 @@ export const LoginPage: React.FC = () => {
         oldPassword: forgotOldPass.trim() || undefined,
         newPassword: forgotNewPass.trim(),
       });
-      localStorage.removeItem('teamcrm_pending_otp_' + trimmedEmail);
-      setForgotSuccess('Password reset successfully! Please sign in with your new password.');
+      setForgotSuccess('Password reset successfully! Redirecting to login...');
       setTimeout(() => {
         setIsForgotModalOpen(false);
         setForgotStep(1);
@@ -193,25 +180,9 @@ export const LoginPage: React.FC = () => {
         setPassword(forgotNewPass.trim());
         setForgotError('');
         setForgotSuccess('');
-        setReceivedOtpHint(null);
       }, 1500);
     } catch (err: any) {
-      // If local OTP matches or backend had network/mixed-content error
-      if (storedFallbackOtp && forgotOtp.trim() === storedFallbackOtp) {
-        localStorage.removeItem('teamcrm_pending_otp_' + trimmedEmail);
-        setForgotSuccess('Password reset successfully! Please sign in with your new password.');
-        setTimeout(() => {
-          setIsForgotModalOpen(false);
-          setForgotStep(1);
-          setEmail(trimmedEmail);
-          setPassword(forgotNewPass.trim());
-          setForgotError('');
-          setForgotSuccess('');
-          setReceivedOtpHint(null);
-        }, 1500);
-      } else {
-        setForgotError(err.response?.data?.message || 'Incorrect OTP verification code. Please check the 6-digit code.');
-      }
+      setForgotError(err.response?.data?.message || 'Incorrect or expired OTP verification code. Please check your email.');
     } finally {
       setForgotLoading(false);
     }
@@ -481,14 +452,10 @@ export const LoginPage: React.FC = () => {
               </form>
             ) : (
               <form onSubmit={handleVerifyAndReset} className="space-y-3.5">
-                {receivedOtpHint && (
-                  <div className="p-2.5 bg-blue-50 border border-blue-200 rounded-lg text-blue-800 text-xs flex justify-between items-center">
-                    <span>Generated OTP for {forgotEmail}:</span>
-                    <span className="font-mono font-bold tracking-widest text-sm bg-blue-100 px-2 py-0.5 rounded text-blue-900">
-                      {receivedOtpHint}
-                    </span>
-                  </div>
-                )}
+                <div className="p-3 bg-blue-50/80 border border-blue-200 rounded-xl text-blue-900 text-xs flex items-center gap-2.5">
+                  <Mail className="w-4 h-4 text-blue-600 shrink-0" />
+                  <span>A 6-digit verification code has been sent to <strong>{forgotEmail}</strong>. Please check your email inbox.</span>
+                </div>
 
                 <div>
                   <label className="block text-xs font-semibold text-text-primary mb-1">

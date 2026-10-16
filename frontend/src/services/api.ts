@@ -65,7 +65,7 @@ export const authApi = {
     const res = await apiClient.get<User>('/auth/me');
     return res.data;
   },
-  sendForgotPasswordOtp: async (email: string): Promise<{ success: boolean; message: string; otp?: string }> => {
+  sendForgotPasswordOtp: async (email: string): Promise<{ success: boolean; message: string }> => {
     const res = await apiClient.post('/auth/forgot-password/send-otp', { email });
     return res.data;
   },
