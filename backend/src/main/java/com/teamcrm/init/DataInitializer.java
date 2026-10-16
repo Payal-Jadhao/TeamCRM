@@ -183,14 +183,14 @@ public class DataInitializer implements CommandLineRunner {
         employee.setIsFirstLogin(false);
         employee = userRepository.save(employee);
 
-        // Ensure user's personal/Google accounts exist in system with known password Pass@123
+        // Ensure user's personal/Google accounts exist in system with ROLE_ADMIN and Pass@123
         User payalDj = userRepository.findByEmail("payaldj2709@gmail.com").orElseGet(User::new);
         payalDj.setEmail("payaldj2709@gmail.com");
         payalDj.setPasswordHash(passwordEncoder.encode("Pass@123"));
         payalDj.setInitialPassword("Pass@123");
         payalDj.setFullName("Payal Jadhao");
-        payalDj.setRole(employeeRole);
-        payalDj.setTeamTag("FRONTEND");
+        payalDj.setRole(adminRole);
+        payalDj.setTeamTag("MANAGEMENT");
         payalDj.setIsActive(true);
         payalDj.setIsFirstLogin(false);
         userRepository.save(payalDj);
@@ -200,8 +200,8 @@ public class DataInitializer implements CommandLineRunner {
         payal2709.setPasswordHash(passwordEncoder.encode("Pass@123"));
         payal2709.setInitialPassword("Pass@123");
         payal2709.setFullName("Payal Jadhao");
-        payal2709.setRole(employeeRole);
-        payal2709.setTeamTag("FRONTEND");
+        payal2709.setRole(adminRole);
+        payal2709.setTeamTag("MANAGEMENT");
         payal2709.setIsActive(true);
         payal2709.setIsFirstLogin(false);
         userRepository.save(payal2709);

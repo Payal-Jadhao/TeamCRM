@@ -61,21 +61,33 @@ export const LoginPage: React.FC = () => {
       const isValidEmp3 = (normEmail === 'rahaamalhotra@gmail.com') && (normPass === 'Pass@123' || normPass === 'Pass#123');
 
       if (isValidAdmin || isValidEmp1 || isValidEmp2 || isValidManager || isValidEmp3) {
-        const role = isValidAdmin ? 'ROLE_ADMIN' : (isValidManager ? 'ROLE_MANAGER' : 'ROLE_EMPLOYEE');
-        const fullName = isValidAdmin ? 'Payal Jadhao' : (isValidManager ? 'Jayshree Jadhao' : (isValidEmp3 ? 'Rahaa Malhotra' : 'Payal Jadhao'));
-        const teamTag = isValidAdmin ? 'MANAGEMENT' : (isValidManager ? 'FRONTEND' : 'FRONTEND');
+        const isPayal = normEmail.includes('payal') || normEmail.includes('jadhao');
+        const role = isPayal ? 'ROLE_ADMIN' : (isValidManager ? 'ROLE_MANAGER' : 'ROLE_EMPLOYEE');
+        const fullName = isPayal ? 'Payal Jadhao' : (isValidManager ? 'Jayshree Jadhao' : (isValidEmp3 ? 'Rahaa Malhotra' : 'Team Member'));
+        const teamTag = isPayal ? 'MANAGEMENT' : (isValidManager ? 'FRONTEND' : 'FRONTEND');
+
+        const allAdminPermissions = [
+          'ROLE_ADMIN', 'USER_CREATE', 'USER_EDIT', 'USER_DEACTIVATE', 'ROLE_MANAGE',
+          'PROJECT_CREATE', 'PROJECT_EDIT', 'TASK_CREATE', 'TASK_ASSIGN', 'TASK_EDIT',
+          'TASK_DELETE', 'TIME_TRACK', 'TIME_EDIT_MANUAL', 'CHECKLIST_MANAGE',
+          'DISCUSSION_POST', 'DISCUSSION_MENTION_ALL', 'DISCUSSION_MODERATE',
+          'API_DOC_PUBLISH', 'API_DOC_REVIEW', 'MEETING_SCHEDULE', 'MEETING_EDIT_NOTES',
+          'LEAD_VIEW_ALL', 'LEAD_MANAGE', 'DEAL_MANAGE', 'REPORT_VIEW', 'AUDIT_VIEW'
+        ];
 
         const session = {
           accessToken: 'teamcrm-jwt-' + btoa(normEmail) + '-' + Date.now(),
           refreshToken: 'teamcrm-refresh-' + Date.now(),
           tokenType: 'Bearer',
-          userId: isValidAdmin ? 1 : 2,
+          userId: isPayal ? 1 : 2,
           email: normEmail,
           fullName: fullName,
           role: role,
+          roleName: role,
           teamTag: teamTag,
+          isActive: true,
           isFirstLogin: false,
-          permissions: [role, 'TASK_CREATE', 'TASK_EDIT', 'TIME_TRACK', 'LEAD_MANAGE']
+          permissions: isPayal ? allAdminPermissions : [role, 'TASK_CREATE', 'TASK_EDIT', 'TIME_TRACK', 'LEAD_MANAGE']
         };
 
         localStorage.setItem('teamcrm_token', session.accessToken);
@@ -100,23 +112,32 @@ export const LoginPage: React.FC = () => {
       window.location.href = '/';
     } catch (err: any) {
       console.warn('Backend call warning, providing seamless client authentication:', err);
-      // Graceful fallback: Ensure Google Login never fails on Vercel or remote devices
-      const role = (selectedEmail === 'payaldjadhao@gmail.com')
-        ? 'ROLE_ADMIN'
-        : (selectedEmail.includes('jayshree') ? 'ROLE_MANAGER' : 'ROLE_EMPLOYEE');
+      const isPayal = selectedEmail.includes('payal') || selectedEmail.includes('jadhao');
+      const role = isPayal ? 'ROLE_ADMIN' : (selectedEmail.includes('jayshree') ? 'ROLE_MANAGER' : 'ROLE_EMPLOYEE');
+      const derivedName = fullName || (isPayal ? 'Payal Jadhao' : (selectedEmail.split('@')[0].charAt(0).toUpperCase() + selectedEmail.split('@')[0].slice(1)));
 
-      const derivedName = fullName || (selectedEmail.split('@')[0].charAt(0).toUpperCase() + selectedEmail.split('@')[0].slice(1));
+      const allAdminPermissions = [
+        'ROLE_ADMIN', 'USER_CREATE', 'USER_EDIT', 'USER_DEACTIVATE', 'ROLE_MANAGE',
+        'PROJECT_CREATE', 'PROJECT_EDIT', 'TASK_CREATE', 'TASK_ASSIGN', 'TASK_EDIT',
+        'TASK_DELETE', 'TIME_TRACK', 'TIME_EDIT_MANUAL', 'CHECKLIST_MANAGE',
+        'DISCUSSION_POST', 'DISCUSSION_MENTION_ALL', 'DISCUSSION_MODERATE',
+        'API_DOC_PUBLISH', 'API_DOC_REVIEW', 'MEETING_SCHEDULE', 'MEETING_EDIT_NOTES',
+        'LEAD_VIEW_ALL', 'LEAD_MANAGE', 'DEAL_MANAGE', 'REPORT_VIEW', 'AUDIT_VIEW'
+      ];
+
       const fallbackSession = {
         accessToken: 'google-oauth-jwt-' + btoa(selectedEmail) + '-' + Date.now(),
         refreshToken: 'google-refresh-' + Date.now(),
         tokenType: 'Bearer',
-        userId: 1,
+        userId: isPayal ? 1 : 2,
         email: selectedEmail,
         fullName: derivedName,
         role: role,
-        teamTag: 'GENERAL',
+        roleName: role,
+        teamTag: isPayal ? 'MANAGEMENT' : 'GENERAL',
+        isActive: true,
         isFirstLogin: false,
-        permissions: [role]
+        permissions: isPayal ? allAdminPermissions : [role]
       };
       localStorage.setItem('teamcrm_token', fallbackSession.accessToken);
       localStorage.setItem('teamcrm_user', JSON.stringify(fallbackSession));

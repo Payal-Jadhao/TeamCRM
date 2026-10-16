@@ -1,5 +1,5 @@
 export type RoleName = 'ROLE_ADMIN' | 'ROLE_MANAGER' | 'ROLE_EMPLOYEE';
-export type TeamTag = 'FRONTEND' | 'BACKEND' | 'QA' | 'SALES' | 'DESIGN';
+export type TeamTag = 'FRONTEND' | 'BACKEND' | 'QA' | 'SALES' | 'DESIGN' | 'MANAGEMENT' | 'GENERAL';
 
 export interface User {
   id: number;

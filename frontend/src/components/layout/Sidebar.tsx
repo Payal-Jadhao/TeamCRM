@@ -69,16 +69,20 @@ export const Sidebar: React.FC<SidebarProps> = ({
       },
     ];
 
+  const userRole = user?.roleName || (user as any)?.role || (user?.email && (user.email.includes('payal') || user.email.includes('jadhao')) ? 'ROLE_ADMIN' : 'ROLE_EMPLOYEE');
+
   const visibleItems = navItems.filter((item) => {
+    // Admin sees all items
+    if (userRole === 'ROLE_ADMIN') return true;
+
     // Audit only for Admin
     if (item.requiresAdminOnly) {
-      return user?.roleName === 'ROLE_ADMIN';
+      return userRole === 'ROLE_ADMIN';
     }
-    // Team & Permissions only for Admin and Manager (NEVER for employees)
+    // Team & Permissions for Admin and Manager
     if (item.requiresAdminOrManager) {
-      return user?.roleName === 'ROLE_ADMIN' || user?.roleName === 'ROLE_MANAGER';
+      return userRole === 'ROLE_ADMIN' || userRole === 'ROLE_MANAGER';
     }
-    if (user?.roleName === 'ROLE_ADMIN') return true;
     if (item.permission && !hasPermission(item.permission)) {
       return false;
     }
