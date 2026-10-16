@@ -132,13 +132,6 @@ npm run dev
 
 ---
 
-## 🔑 Default Master Accounts
-
-| Role | Email | Password |
-| :--- | :--- | :--- |
-| **Admin** | `payaldjadhao@gmail.com` | `Pass@123` |
-| **Manager** | `jayshreejadhao0206@gmail.com` | `Pass@123321` |
-| **Employee** | `rahaamalhotra@gmail.com` | `Pass#123` |
 
 ---
 
