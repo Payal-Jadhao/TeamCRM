@@ -522,7 +522,7 @@ export const LoginPage: React.FC = () => {
         </div>
       )}
 
-      {/* Google OAuth Account Picker Modal */}
+      {/* Google OAuth Account Sign-In Modal */}
       {isGoogleModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-xs p-4 animate-in fade-in duration-150">
           <div className="bg-white rounded-2xl shadow-modal border border-border-custom max-w-sm w-full p-6 animate-in zoom-in-95 duration-200 relative">
@@ -533,8 +533,8 @@ export const LoginPage: React.FC = () => {
               <X className="w-5 h-5" />
             </button>
 
-            <div className="text-center mb-5">
-              <svg className="w-7 h-7 mx-auto mb-2" viewBox="0 0 24 24">
+            <div className="text-center mb-6">
+              <svg className="w-8 h-8 mx-auto mb-2.5" viewBox="0 0 24 24">
                 <path
                   fill="#4285F4"
                   d="M23.745 12.27c0-.7-.06-1.4-.19-2.07H12v4.51h6.6c-.29 1.52-1.14 2.82-2.4 3.68v3.05h3.88c2.27-2.09 3.665-5.17 3.665-9.17z"
@@ -553,80 +553,57 @@ export const LoginPage: React.FC = () => {
                 />
               </svg>
               <h3 className="text-base font-bold text-text-primary">Sign in with Google</h3>
-              <p className="text-xs text-text-secondary mt-0.5">
-                Choose an account to continue to TeamCRM
+              <p className="text-xs text-text-secondary mt-1">
+                Use your Google Account to continue to TeamCRM
               </p>
             </div>
 
-            <div className="space-y-2 mb-4">
-              <button
-                type="button"
-                disabled={googleLoading}
-                onClick={() => handleGoogleLogin('payaldjadhao@gmail.com', 'Payal Jadhao')}
-                className="w-full p-2.5 flex items-center justify-between text-left bg-purple-50/70 hover:bg-purple-100/80 border border-purple-200/70 rounded-xl transition-all"
-              >
-                <div>
-                  <div className="text-xs font-bold text-text-primary">Payal Jadhao (Admin)</div>
-                  <div className="text-[11px] text-text-secondary">payaldjadhao@gmail.com</div>
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                if (googleCustomEmail.trim()) {
+                  handleGoogleLogin(googleCustomEmail.trim());
+                }
+              }}
+              className="space-y-4"
+            >
+              <div>
+                <label className="block text-xs font-semibold text-text-primary mb-1.5">
+                  Google Email Address
+                </label>
+                <div className="relative">
+                  <Mail className="w-4 h-4 text-text-secondary absolute left-3 top-1/2 -translate-y-1/2" />
+                  <input
+                    type="email"
+                    required
+                    autoFocus
+                    value={googleCustomEmail}
+                    onChange={(e) => setGoogleCustomEmail(e.target.value)}
+                    placeholder="name@gmail.com"
+                    className="w-full pl-9 pr-4 py-2.5 bg-purple-50 text-sm text-text-primary rounded-xl border border-border-custom focus:border-primary outline-none transition-all"
+                  />
                 </div>
-                <span className="text-[10px] bg-purple-200/80 text-primary font-semibold px-2 py-0.5 rounded">
-                  Admin
-                </span>
-              </button>
-
-              <button
-                type="button"
-                disabled={googleLoading}
-                onClick={() => handleGoogleLogin('jayshreejadhao0206@gmail.com', 'Jayshree Jadhao')}
-                className="w-full p-2.5 flex items-center justify-between text-left bg-purple-50/70 hover:bg-purple-100/80 border border-purple-200/70 rounded-xl transition-all"
-              >
-                <div>
-                  <div className="text-xs font-bold text-text-primary">Jayshree Jadhao (Manager)</div>
-                  <div className="text-[11px] text-text-secondary">jayshreejadhao0206@gmail.com</div>
-                </div>
-                <span className="text-[10px] bg-blue-100 text-blue-700 font-semibold px-2 py-0.5 rounded">
-                  Manager
-                </span>
-              </button>
-
-              <button
-                type="button"
-                disabled={googleLoading}
-                onClick={() => handleGoogleLogin('rahaamalhotra@gmail.com', 'Rahaa Malhotra')}
-                className="w-full p-2.5 flex items-center justify-between text-left bg-purple-50/70 hover:bg-purple-100/80 border border-purple-200/70 rounded-xl transition-all"
-              >
-                <div>
-                  <div className="text-xs font-bold text-text-primary">Rahaa Malhotra (Employee)</div>
-                  <div className="text-[11px] text-text-secondary">rahaamalhotra@gmail.com</div>
-                </div>
-                <span className="text-[10px] bg-emerald-100 text-emerald-700 font-semibold px-2 py-0.5 rounded">
-                  Employee
-                </span>
-              </button>
-            </div>
-
-            <div className="pt-2 border-t border-border-custom">
-              <label className="block text-[11px] font-semibold text-text-secondary mb-1">
-                Or enter any Google account to sign in / auto-register:
-              </label>
-              <div className="flex gap-2">
-                <input
-                  type="email"
-                  value={googleCustomEmail}
-                  onChange={(e) => setGoogleCustomEmail(e.target.value)}
-                  placeholder="yourname@gmail.com"
-                  className="flex-1 px-3 py-1.5 bg-purple-50 text-xs text-text-primary rounded-lg border border-border-custom focus:border-primary outline-none"
-                />
-                <button
-                  type="button"
-                  disabled={googleLoading || !googleCustomEmail.trim()}
-                  onClick={() => handleGoogleLogin(googleCustomEmail.trim())}
-                  className="px-3 py-1.5 bg-primary hover:bg-primary-hover text-white text-xs font-semibold rounded-lg disabled:opacity-50 transition-all"
-                >
-                  Sign In
-                </button>
               </div>
-            </div>
+
+              <button
+                type="submit"
+                disabled={googleLoading || !googleCustomEmail.trim()}
+                className="w-full py-2.5 bg-primary hover:bg-primary-hover text-white text-sm font-semibold rounded-xl shadow-sm hover:shadow-soft transition-all flex items-center justify-center gap-2 disabled:opacity-50 cursor-pointer"
+              >
+                {googleLoading ? (
+                  <span>Authenticating with Google...</span>
+                ) : (
+                  <>
+                    <span>Continue with Google</span>
+                    <ArrowRight className="w-4 h-4" />
+                  </>
+                )}
+              </button>
+            </form>
+
+            <p className="text-[11px] text-text-secondary text-center mt-4 leading-relaxed">
+              New team members signing in with Google are automatically provisioned with a secure employee account.
+            </p>
           </div>
         </div>
       )}
