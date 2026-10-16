@@ -141,7 +141,7 @@ export const LoginPage: React.FC = () => {
       setForgotSuccess(res.message || `A 6-digit verification code has been sent to ${trimmedEmail}`);
       setForgotStep(2);
     } catch (err: any) {
-      setForgotError(err.response?.data?.message || 'Failed to dispatch verification OTP. Please try again.');
+      setForgotError(err.response?.data?.message || 'This email address does not exist in our system. Please check your registered email.');
     } finally {
       setForgotLoading(false);
     }

@@ -131,23 +131,12 @@ public class AuthService {
 
     public SendOtpResponse sendForgotPasswordOtp(SendOtpRequest request) {
         String email = request.email().toLowerCase().trim();
-        User user = userRepository.findByEmail(email).orElseGet(() -> {
-            Role employeeRole = roleRepository.findByName("ROLE_EMPLOYEE")
-                    .orElseGet(() -> roleRepository.findAll().stream().findFirst().orElse(null));
+        User user = userRepository.findByEmail(email)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "This email address does not exist in our system. Please check your registered email."));
 
-            User newUser = new User();
-            newUser.setEmail(email);
-            String prefix = email.split("@")[0];
-            String derivedName = Character.toUpperCase(prefix.charAt(0)) + (prefix.length() > 1 ? prefix.substring(1) : "");
-            newUser.setFullName(derivedName);
-            newUser.setPasswordHash(passwordEncoder.encode(java.util.UUID.randomUUID().toString()));
-            newUser.setInitialPassword("User123!");
-            newUser.setRole(employeeRole);
-            newUser.setTeamTag("GENERAL");
-            newUser.setIsActive(true);
-            newUser.setIsFirstLogin(false);
-            return userRepository.save(newUser);
-        });
+        if (user.getIsActive() != null && !user.getIsActive()) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Your account has been deactivated. Please contact your administrator.");
+        }
 
         String otp = String.format("%06d", new Random().nextInt(900000) + 100000);
         otpCache.put(email, new OtpEntry(otp, Instant.now().plus(Duration.ofMinutes(10))));
