@@ -668,8 +668,28 @@ export const LoginPage: React.FC = () => {
               </p>
             </div>
 
-            {/* Account List or Custom Input */}
-            {!showCustomGoogleInput ? (
+            {/* Account List or No Active Account State */}
+            {dynamicGoogleAccounts.length === 0 && !showCustomGoogleInput ? (
+              <div className="py-6 px-3 text-center border-t border-gray-100">
+                <div className="w-12 h-12 bg-amber-50 text-amber-600 rounded-2xl flex items-center justify-center mx-auto mb-3 shadow-xs border border-amber-200">
+                  <AlertTriangle className="w-6 h-6" />
+                </div>
+                <h3 className="text-base font-bold text-gray-900 mb-1">
+                  Your email is not registered
+                </h3>
+                <p className="text-xs text-gray-600 mb-5 leading-relaxed">
+                  No active Google account was detected on this system session. If you have an authorized TeamCRM account, enter it below to sign in.
+                </p>
+                <button
+                  type="button"
+                  onClick={() => setShowCustomGoogleInput(true)}
+                  className="w-full py-2.5 bg-[#1a73e8] hover:bg-[#1557b0] text-white text-xs font-semibold rounded-xl shadow-xs transition-all cursor-pointer flex items-center justify-center gap-2"
+                >
+                  <User className="w-4 h-4" />
+                  <span>Enter Google Account</span>
+                </button>
+              </div>
+            ) : !showCustomGoogleInput ? (
               <div className="border-t border-gray-200">
                 {dynamicGoogleAccounts.map((acc) => (
                   <button
@@ -797,7 +817,7 @@ export const LoginPage: React.FC = () => {
             <h3 className="text-base font-bold text-gray-900 mb-2">Access Denied</h3>
 
             <p className="text-sm font-semibold text-gray-700 leading-relaxed mb-6">
-              This email is not registered. Contact admin.
+              Your email is not registered. Contact admin.
             </p>
 
             <button

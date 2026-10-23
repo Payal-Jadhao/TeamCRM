@@ -1,13 +1,10 @@
-import { mockStore } from './mockStore';
-import { userApi } from './api';
-
 export interface GoogleAccountItem {
   name: string;
   email: string;
   avatarColor: string;
 }
 
-const STORAGE_KEY = 'teamcrm_google_accounts';
+const DEVICE_STORAGE_KEY = 'teamcrm_device_google_accounts';
 
 /**
  * Deterministically compute an avatar color from an email address
@@ -38,95 +35,128 @@ export const formatNameFromEmail = (em: string): string => {
 };
 
 export const googleAuthService = {
-  getStoredAccounts: (): GoogleAccountItem[] => {
+  /**
+   * Fetch only accounts saved on this device's browser session (no hardcoded accounts)
+   */
+  getStoredDeviceAccounts: (): GoogleAccountItem[] => {
     try {
-      const raw = localStorage.getItem(STORAGE_KEY);
+      const raw = localStorage.getItem(DEVICE_STORAGE_KEY);
       if (raw) {
         const parsed = JSON.parse(raw);
         if (Array.isArray(parsed) && parsed.length > 0) {
-          return parsed;
+          return parsed.filter((item) => item && typeof item.email === 'string' && item.email.includes('@'));
         }
       }
     } catch (e) {
-      console.warn('Failed to parse stored Google accounts', e);
+      console.warn('Failed to parse device Google accounts', e);
     }
     return [];
   },
 
-  saveAccounts: (accounts: GoogleAccountItem[]) => {
+  /**
+   * Save an account authenticated on this device
+   */
+  saveDeviceAccounts: (accounts: GoogleAccountItem[]) => {
     try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(accounts));
+      localStorage.setItem(DEVICE_STORAGE_KEY, JSON.stringify(accounts));
     } catch (e) {}
   },
 
+  /**
+   * Remember an account manually entered or selected in this session
+   */
   rememberAccount: (email: string, name?: string): GoogleAccountItem[] => {
     const cleanEmail = email.trim().toLowerCase();
-    if (!cleanEmail) return googleAuthService.getStoredAccounts();
+    if (!cleanEmail || !cleanEmail.includes('@')) return googleAuthService.getStoredDeviceAccounts();
 
-    const existing = googleAuthService.getStoredAccounts();
+    const existing = googleAuthService.getStoredDeviceAccounts();
     const displayName = name?.trim() || formatNameFromEmail(cleanEmail);
     const updated = [
       { name: displayName, email: cleanEmail, avatarColor: getAvatarColor(cleanEmail) },
       ...existing.filter((a) => a.email.toLowerCase() !== cleanEmail),
     ];
-    googleAuthService.saveAccounts(updated);
+    googleAuthService.saveDeviceAccounts(updated);
     return updated;
   },
 
+  /**
+   * Completely dynamic: Inspects runtime session payload & device credentials only.
+   * Never injects hardcoded emails or internal CRM user lists.
+   */
   getDynamicAccounts: async (): Promise<GoogleAccountItem[]> => {
-    // 1. Gather all registered users from CRM (backend API or mock store)
-    let registeredUsers: any[] = [];
+    const detectedMap = new Map<string, GoogleAccountItem>();
+
+    // 1. Check for runtime injected Google authentication payload on window object
     try {
-      registeredUsers = await userApi.getUsers();
-    } catch (e) {
+      const win = window as any;
+      const runtimePayload = win.__GOOGLE_USER__ || win.googleSessionData || win.__RUNTIME_AUTH__;
+      if (runtimePayload) {
+        const payloadAccounts = Array.isArray(runtimePayload) ? runtimePayload : [runtimePayload];
+        for (const item of payloadAccounts) {
+          const email = (typeof item === 'string' ? item : item?.email)?.trim()?.toLowerCase();
+          if (email && email.includes('@')) {
+            const name = (typeof item === 'object' && item?.name) || formatNameFromEmail(email);
+            detectedMap.set(email, {
+              name,
+              email,
+              avatarColor: getAvatarColor(email),
+            });
+          }
+        }
+      }
+    } catch (e) {}
+
+    // 2. Check for runtime session storage payload
+    try {
+      const sessionRaw = sessionStorage.getItem('google_auth_payload');
+      if (sessionRaw) {
+        const parsed = JSON.parse(sessionRaw);
+        const list = Array.isArray(parsed) ? parsed : [parsed];
+        for (const p of list) {
+          const email = p?.email?.trim()?.toLowerCase();
+          if (email && email.includes('@')) {
+            detectedMap.set(email, {
+              name: p.name || formatNameFromEmail(email),
+              email,
+              avatarColor: getAvatarColor(email),
+            });
+          }
+        }
+      }
+    } catch (e) {}
+
+    // 3. Check for accounts saved on this device from previous active sessions
+    const deviceSaved = googleAuthService.getStoredDeviceAccounts();
+    for (const acc of deviceSaved) {
+      if (acc?.email && !detectedMap.has(acc.email.toLowerCase())) {
+        detectedMap.set(acc.email.toLowerCase(), acc);
+      }
+    }
+
+    // 4. Check Web Credentials API if supported by the browser
+    if (typeof navigator !== 'undefined' && navigator.credentials && navigator.credentials.get) {
       try {
-        registeredUsers = mockStore.getUsers() || [];
-      } catch (err) {}
-    }
-
-    // 2. Gather accounts stored in localStorage from previous interactions on this device
-    const stored = googleAuthService.getStoredAccounts();
-
-    // 3. Map accounts uniquely by email
-    const accountMap = new Map<string, GoogleAccountItem>();
-
-    // Add stored accounts
-    for (const acc of stored) {
-      if (acc?.email) {
-        accountMap.set(acc.email.toLowerCase(), acc);
+        const cred: any = await Promise.race([
+          navigator.credentials.get({ mediation: 'silent' } as any),
+          new Promise((resolve) => setTimeout(() => resolve(null), 300)),
+        ]);
+        if (cred && cred.id && cred.id.includes('@')) {
+          const email = cred.id.trim().toLowerCase();
+          if (!detectedMap.has(email)) {
+            detectedMap.set(email, {
+              name: cred.name || formatNameFromEmail(email),
+              email,
+              avatarColor: getAvatarColor(email),
+            });
+          }
+        }
+      } catch (e) {
+        // Silently ignore if not granted
       }
     }
 
-    // Add CRM registered users
-    for (const u of registeredUsers) {
-      const email = u?.email?.trim().toLowerCase();
-      if (email && !accountMap.has(email)) {
-        accountMap.set(email, {
-          name: u.fullName || formatNameFromEmail(email),
-          email: email,
-          avatarColor: getAvatarColor(email),
-        });
-      }
-    }
-
-    // Discovered Google accounts present in browser session / history
-    const detectedDeviceEmails = [
-      'payaldjadhao@gmail.com',
-      'payaljadhao2709@gmail.com',
-      'payaldj2709@gmail.com',
-    ];
-    for (const em of detectedDeviceEmails) {
-      if (!accountMap.has(em)) {
-        accountMap.set(em, {
-          name: em.includes('payal') ? 'Payal Jadhao' : formatNameFromEmail(em),
-          email: em,
-          avatarColor: getAvatarColor(em),
-        });
-      }
-    }
-
-    const result = Array.from(accountMap.values());
-    googleAuthService.saveAccounts(result);
-    return result;
+    // Returns ONLY accounts detected from the runtime session/device.
+    // If none are active, returns an empty array.
+    return Array.from(detectedMap.values());
   },
 };

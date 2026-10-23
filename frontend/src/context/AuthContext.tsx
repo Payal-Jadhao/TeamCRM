@@ -25,11 +25,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         if (!parsed.roleName && parsed.role) {
           parsed.roleName = parsed.role;
         }
-        if (parsed.email && (parsed.email.includes('payal') || parsed.email.includes('jadhao')) && !parsed.email.includes('jayshree')) {
-          parsed.roleName = 'ROLE_ADMIN';
-          parsed.role = 'ROLE_ADMIN';
-          parsed.teamTag = 'MANAGEMENT';
-        }
       }
       return parsed;
     } catch {
@@ -44,11 +39,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     if (!token) return;
     try {
       const profile = await authApi.getMe();
-      if (profile && (profile.email.includes('payal') || profile.email.includes('jadhao')) && !profile.email.includes('jayshree')) {
-        profile.roleName = 'ROLE_ADMIN';
-        (profile as any).role = 'ROLE_ADMIN';
-        profile.teamTag = 'MANAGEMENT';
-      }
       setUser(profile);
       sessionStorage.setItem('teamcrm_user', JSON.stringify(profile));
     } catch (e) {
@@ -68,20 +58,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     sessionStorage.setItem('teamcrm_token', res.accessToken);
     sessionStorage.setItem('teamcrm_refresh_token', res.refreshToken);
 
-    const isSuperAdmin = res.email.trim().toLowerCase() === 'payaldjadhao@gmail.com';
-    const effectiveRole = isSuperAdmin ? 'ROLE_ADMIN' : (res.role || 'ROLE_EMPLOYEE');
+    const effectiveRole = res.role || 'ROLE_EMPLOYEE';
 
     const initialUser: User = {
       id: res.userId,
       email: res.email,
       fullName: res.fullName,
       roleName: effectiveRole,
-      teamTag: isSuperAdmin ? 'MANAGEMENT' : (res.teamTag || 'FRONTEND'),
+      teamTag: res.teamTag || 'MANAGEMENT',
       isActive: true,
       isFirstLogin: res.isFirstLogin,
-      permissions: isSuperAdmin
-        ? ['ROLE_ADMIN', 'USER_CREATE', 'USER_EDIT', 'USER_DEACTIVATE', 'ROLE_MANAGE', 'REPORT_VIEW', 'AUDIT_VIEW']
-        : Array.from(res.permissions || [effectiveRole]),
+      permissions: Array.from(res.permissions || [effectiveRole]),
     };
     (initialUser as any).role = effectiveRole;
     setUser(initialUser);
@@ -96,20 +83,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     sessionStorage.setItem('teamcrm_token', res.accessToken);
     sessionStorage.setItem('teamcrm_refresh_token', res.refreshToken);
 
-    const isSuperAdmin = res.email.trim().toLowerCase() === 'payaldjadhao@gmail.com';
-    const effectiveRole = isSuperAdmin ? 'ROLE_ADMIN' : (res.role || 'ROLE_EMPLOYEE');
+    const effectiveRole = res.role || 'ROLE_EMPLOYEE';
 
     const initialUser: User = {
       id: res.userId,
       email: res.email,
       fullName: res.fullName,
       roleName: effectiveRole,
-      teamTag: isSuperAdmin ? 'MANAGEMENT' : (res.teamTag || 'FRONTEND'),
+      teamTag: res.teamTag || 'MANAGEMENT',
       isActive: true,
       isFirstLogin: res.isFirstLogin,
-      permissions: isSuperAdmin
-        ? ['ROLE_ADMIN', 'USER_CREATE', 'USER_EDIT', 'USER_DEACTIVATE', 'ROLE_MANAGE', 'REPORT_VIEW', 'AUDIT_VIEW']
-        : Array.from(res.permissions || [effectiveRole]),
+      permissions: Array.from(res.permissions || [effectiveRole]),
     };
     (initialUser as any).role = effectiveRole;
     setUser(initialUser);

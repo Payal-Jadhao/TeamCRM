@@ -163,11 +163,10 @@ export const authApi = {
         const clean = email.trim().toLowerCase();
         const users = mockStore.getUsers();
         const found = users.find((u) => u.email.toLowerCase() === clean);
-        const isRecognized = !!found || clean.includes('payal');
-        if (!isRecognized) {
-          throw new Error('This email address does not exist in our system. Please check your registered email.');
+        if (!found) {
+          throw new Error('Your email is not registered. Contact admin.');
         }
-        const targetEmail = found?.email || clean;
+        const targetEmail = found.email;
         const otp = Math.floor(100000 + Math.random() * 900000).toString();
         sessionStorage.setItem('teamcrm_otp_' + clean, otp);
 
@@ -233,7 +232,7 @@ export const authApi = {
         const users = mockStore.getUsers();
         const found = users.find((u) => u.email.toLowerCase() === email.trim().toLowerCase());
         if (!found) {
-          throw new Error('This email is not registered. Contact admin.');
+          throw new Error('Your email is not registered. Contact admin.');
         }
         if (!found.isActive) {
           throw new Error('Your TeamCRM account has been deactivated. Please contact your administrator.');
@@ -251,7 +250,7 @@ export const authApi = {
           permissions: found.permissions || ['ROLE_EMPLOYEE'],
         };
       },
-      { strict: true, msg401: 'This email is not registered. Contact admin.' }
+      { strict: true, msg401: 'Your email is not registered. Contact admin.' }
     );
   },
 };
