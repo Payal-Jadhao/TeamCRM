@@ -537,7 +537,7 @@ export const Topbar: React.FC<TopbarProps> = ({
                 {user?.fullName || 'User'}
               </div>
               <div className="text-[10px] text-text-secondary">
-                {user?.teamTag || (user?.roleName || (user as any)?.role || 'ADMIN').replace('ROLE_', '')}
+                {user?.teamTag || (user?.roleName || (user as any)?.role || 'EMPLOYEE').replace('ROLE_', '')}
               </div>
             </div>
           </button>
@@ -549,7 +549,7 @@ export const Topbar: React.FC<TopbarProps> = ({
                 <div className="font-semibold text-xs text-text-primary">{user?.fullName}</div>
                 <div className="text-[11px] text-text-secondary truncate">{user?.email}</div>
                 <span className="inline-block mt-1.5 px-2.5 py-0.5 text-[10px] font-bold tracking-wider bg-purple-100 text-primary rounded-full uppercase">
-                  {(user?.roleName || (user as any)?.role || 'ROLE_ADMIN').replace('ROLE_', '')}
+                  {(user?.roleName || (user as any)?.role || 'ROLE_EMPLOYEE').replace('ROLE_', '')}
                 </span>
               </div>
               <button

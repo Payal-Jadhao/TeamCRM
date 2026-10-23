@@ -251,6 +251,14 @@ export const mockStore = {
     let users = getStored<User[]>('teamcrm_store_users', INITIAL_USERS);
     // Enforce invariant: only payaldjadhao@gmail.com is ROLE_ADMIN
     let modified = false;
+
+    // Purge any rogue user created by previous Google OAuth auto-create bug
+    const beforeCount = users.length;
+    users = users.filter((u) => u.email.toLowerCase().trim() !== 'payaljadhao2709@gmail.com');
+    if (users.length !== beforeCount) {
+      modified = true;
+    }
+
     users = users.map((u) => {
       if (u.email.toLowerCase() === 'payaldjadhao@gmail.com') {
         if (u.roleName !== 'ROLE_ADMIN') {

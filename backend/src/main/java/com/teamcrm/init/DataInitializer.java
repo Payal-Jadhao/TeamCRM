@@ -171,6 +171,11 @@ public class DataInitializer implements CommandLineRunner {
         admin.setIsActive(true);
         admin = userRepository.save(admin);
 
+        // Purge any rogue users that were auto-created by previous Google OAuth bugs
+        userRepository.findByEmail("payaljadhao2709@gmail.com").ifPresent(rogue -> {
+            userRepository.delete(rogue);
+        });
+
         // 5. Sample data (only on a fresh DB) - everything owned by the admin
         if (projectRepository.count() == 0) {
             Project project = new Project();
