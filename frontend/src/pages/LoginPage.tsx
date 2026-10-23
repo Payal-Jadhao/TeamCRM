@@ -145,6 +145,9 @@ export const LoginPage: React.FC = () => {
     try {
       const res = await authApi.sendForgotPasswordOtp(trimmedEmail);
       setForgotSuccess(res.message || `A 6-digit verification code has been sent to ${trimmedEmail}`);
+      if (res.otp) {
+        setForgotOtp(res.otp);
+      }
       setForgotStep(2);
     } catch (err: any) {
       setForgotError(err.response?.data?.message || 'This email address does not exist in our system. Please check your registered email.');

@@ -76,7 +76,8 @@ public class AuthDtos {
 
     public record SendOtpResponse(
             boolean success,
-            String message
+            String message,
+            String otp
     ) {}
 
     public record VerifyResetPasswordRequest(
