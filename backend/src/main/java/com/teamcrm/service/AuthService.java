@@ -167,13 +167,16 @@ public class AuthService {
         }
 
         String msg;
+        String returnedOtp;
         if (emailSent) {
-            msg = "A 6-digit verification code has been sent to your email address (" + email + "). Please check your inbox.";
+            msg = "A 6-digit verification code has been dispatched to your registered email. Please check your inbox.";
+            returnedOtp = null;
         } else {
             msg = "Verification code generated: " + otp + ". Please enter this 6-digit code below to set your new password.";
+            returnedOtp = otp;
         }
 
-        return new SendOtpResponse(true, msg, otp);
+        return new SendOtpResponse(true, msg, returnedOtp);
     }
 
     @Transactional
