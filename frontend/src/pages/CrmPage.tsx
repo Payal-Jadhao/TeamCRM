@@ -16,7 +16,11 @@ import {
   TrendingUp,
 } from 'lucide-react';
 
-export const CrmPage: React.FC = () => {
+interface CrmPageProps {
+  searchTerm?: string;
+}
+
+export const CrmPage: React.FC<CrmPageProps> = ({ searchTerm }) => {
   const [activeTab, setActiveTab] = useState<'leads' | 'deals' | 'customers'>('leads');
   const [leads, setLeads] = useState<Lead[]>([]);
   const [deals, setDeals] = useState<Deal[]>([]);
@@ -154,6 +158,39 @@ export const CrmPage: React.FC = () => {
 
   const dealStages = ['PROSPECT', 'PROPOSAL', 'NEGOTIATION', 'WON', 'LOST'];
 
+  const query = searchTerm?.trim().toLowerCase() || '';
+
+  const filteredLeads = query
+    ? leads.filter(
+        (l) =>
+          l.firstName?.toLowerCase().includes(query) ||
+          (l.lastName || '')?.toLowerCase().includes(query) ||
+          (l.company || '')?.toLowerCase().includes(query) ||
+          (l.email || '')?.toLowerCase().includes(query) ||
+          (l.status || '')?.toLowerCase().includes(query)
+      )
+    : leads;
+
+  const filteredDeals = query
+    ? deals.filter(
+        (d) =>
+          d.title?.toLowerCase().includes(query) ||
+          (d.customerName || '')?.toLowerCase().includes(query) ||
+          (d.leadName || '')?.toLowerCase().includes(query) ||
+          (d.stage || '')?.toLowerCase().includes(query)
+      )
+    : deals;
+
+  const filteredCustomers = query
+    ? customers.filter(
+        (c) =>
+          c.companyName?.toLowerCase().includes(query) ||
+          (c.primaryContactName || '')?.toLowerCase().includes(query) ||
+          (c.primaryContactEmail || '')?.toLowerCase().includes(query) ||
+          (c.industry || '')?.toLowerCase().includes(query)
+      )
+    : customers;
+
   return (
     <div className="p-8 max-w-7xl mx-auto space-y-6">
       {/* Top Banner & Tab Navigation */}
@@ -167,7 +204,7 @@ export const CrmPage: React.FC = () => {
                 : 'bg-purple-50 text-text-secondary hover:text-text-primary'
             }`}
           >
-            Leads Pipeline ({leads.length})
+            Leads Pipeline ({filteredLeads.length})
           </button>
           <button
             onClick={() => setActiveTab('deals')}
@@ -177,7 +214,7 @@ export const CrmPage: React.FC = () => {
                 : 'bg-purple-50 text-text-secondary hover:text-text-primary'
             }`}
           >
-            Deals Pipeline ({deals.length})
+            Deals Pipeline ({filteredDeals.length})
           </button>
           <button
             onClick={() => setActiveTab('customers')}
@@ -187,7 +224,7 @@ export const CrmPage: React.FC = () => {
                 : 'bg-purple-50 text-text-secondary hover:text-text-primary'
             }`}
           >
-            Accounts ({customers.length})
+            Accounts ({filteredCustomers.length})
           </button>
         </div>
 
@@ -227,7 +264,7 @@ export const CrmPage: React.FC = () => {
                 </tr>
               </thead>
               <tbody className="divide-y divide-border-custom">
-                {leads.map((lead) => (
+                {filteredLeads.map((lead) => (
                   <tr key={lead.id} className="hover:bg-purple-50/40 transition-colors">
                     <td className="px-6 py-4 font-bold text-text-primary">
                       {lead.firstName} {lead.lastName}
@@ -269,7 +306,7 @@ export const CrmPage: React.FC = () => {
       {activeTab === 'deals' && (
         <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
           {dealStages.map((stage) => {
-            const stageDeals = deals.filter((d) => d.stage === stage);
+            const stageDeals = filteredDeals.filter((d) => d.stage === stage);
             const stageTotal = stageDeals.reduce((sum, d) => sum + Number(d.dealValue || 0), 0);
             return (
               <div
@@ -330,7 +367,7 @@ export const CrmPage: React.FC = () => {
       {/* TAB 3: CUSTOMERS DIRECTORY */}
       {activeTab === 'customers' && (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          {customers.map((c) => (
+          {filteredCustomers.map((c) => (
             <div
               key={c.id}
               className="bg-white p-5 rounded-2xl border border-border-custom shadow-xs space-y-3"

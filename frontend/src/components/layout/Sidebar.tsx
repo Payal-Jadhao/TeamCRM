@@ -109,7 +109,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
               <div className="font-extrabold text-base tracking-tight text-text-primary flex items-center gap-1.5">
                 TeamCRM
               </div>
-              <div className="text-[11px] text-text-secondary leading-none">Internal Platform</div>
+              {/* <div className="text-[11px] text-text-secondary leading-none">Internal Platform</div> */}
             </div>
           </div>
           {isMobileView && onCloseMobile && (
@@ -131,17 +131,15 @@ export const Sidebar: React.FC<SidebarProps> = ({
               <button
                 key={item.id}
                 onClick={() => handleItemClick(item.id)}
-                className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl font-medium text-sm transition-all text-left ${
-                  isActive
-                    ? 'bg-purple-100/90 text-primary font-semibold shadow-xs'
-                    : 'text-text-secondary hover:bg-white hover:text-text-primary'
-                }`}
+                className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl font-medium text-sm transition-all text-left ${isActive
+                  ? 'bg-purple-100/90 text-primary font-semibold shadow-xs'
+                  : 'text-text-secondary hover:bg-white hover:text-text-primary'
+                  }`}
               >
                 <div className="flex items-center gap-3">
                   <Icon
-                    className={`w-4 h-4 transition-colors ${
-                      isActive ? 'text-primary' : 'text-text-secondary'
-                    }`}
+                    className={`w-4 h-4 transition-colors ${isActive ? 'text-primary' : 'text-text-secondary'
+                      }`}
                   />
                   <span>{item.label}</span>
                 </div>
@@ -156,15 +154,20 @@ export const Sidebar: React.FC<SidebarProps> = ({
         </nav>
       </div>
 
-      {/* Footer Info / Gemini AI Indicator */}
-      <div className="p-4 m-3 bg-white rounded-xl border border-border-custom shadow-xs">
-        <div className="flex items-center gap-2 mb-1.5">
-          <Sparkles className="w-4 h-4 text-primary animate-pulse" />
-          <span className="font-bold text-xs text-text-primary">Gemini AI Copilot</span>
+      {/* Footer Branding */}
+      <div className="p-2.5 m-3 bg-white rounded-xl border border-border-custom shadow-xs flex items-center justify-between">
+        <div className="flex items-center gap-2 relative">
+          <img
+            src="/TeamCRMBYPDJ.png"
+            alt="TeamCRM Logo"
+            className="w-8 h-8 object-contain rounded-md shrink-0 cursor-pointer
+                 transition-transform duration-300 ease-out origin-bottom-left
+                 hover:scale-[2.5] hover:z-50 hover:shadow-lg hover:bg-white"
+          />
         </div>
-        <p className="text-[11px] text-text-secondary leading-relaxed">
-          Smart checklist generation, auto lead insights & meeting action extraction.
-        </p>
+        <span className="text-[11px] font-semibold text-text-secondary">
+          @{new Date().getFullYear()} Payal Jadhao
+        </span>
       </div>
     </div>
   );

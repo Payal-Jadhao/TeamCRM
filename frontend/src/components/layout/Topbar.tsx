@@ -1,7 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useAuth } from '../../context/AuthContext';
-import { timeApi, notificationApi } from '../../services/api';
-import { RunningTimer, NotificationItem } from '../../types';
+import { timeApi, notificationApi, taskApi, crmApi } from '../../services/api';
+import { RunningTimer, NotificationItem, Task, Deal, Lead } from '../../types';
 import {
   Search,
   Plus,
@@ -16,6 +16,11 @@ import {
   ExternalLink,
   ChevronDown,
   Menu,
+  X,
+  CheckCircle2,
+  ArrowRight,
+  Briefcase,
+  Users,
 } from 'lucide-react';
 
 interface TopbarProps {
@@ -24,6 +29,7 @@ interface TopbarProps {
   searchTerm: string;
   onSearchChange: (q: string) => void;
   onToggleMobileMenu?: () => void;
+  onNavigateTab?: (tab: any) => void;
 }
 
 export const Topbar: React.FC<TopbarProps> = ({
@@ -32,6 +38,7 @@ export const Topbar: React.FC<TopbarProps> = ({
   searchTerm,
   onSearchChange,
   onToggleMobileMenu,
+  onNavigateTab,
 }) => {
   const { user, logout } = useAuth();
   const [runningTimer, setRunningTimer] = useState<RunningTimer | null>(null);
@@ -40,6 +47,54 @@ export const Topbar: React.FC<TopbarProps> = ({
   const [showNotifDropdown, setShowNotifDropdown] = useState(false);
   const [showProfileDropdown, setShowProfileDropdown] = useState(false);
   const [showTimerActions, setShowTimerActions] = useState(false);
+  const [showSearchDropdown, setShowSearchDropdown] = useState(false);
+
+  // Search Data Cache for instant live results
+  const [tasksCache, setTasksCache] = useState<Task[]>([]);
+  const [dealsCache, setDealsCache] = useState<Deal[]>([]);
+  const [leadsCache, setLeadsCache] = useState<Lead[]>([]);
+
+  const searchRef = useRef<HTMLDivElement>(null);
+  const timerRef = useRef<HTMLDivElement>(null);
+  const notifRef = useRef<HTMLDivElement>(null);
+  const profileRef = useRef<HTMLDivElement>(null);
+
+  // Close dropdowns when clicking anywhere outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      const target = event.target as Node;
+      if (searchRef.current && !searchRef.current.contains(target)) {
+        setShowSearchDropdown(false);
+      }
+      if (notifRef.current && !notifRef.current.contains(target)) {
+        setShowNotifDropdown(false);
+      }
+      if (profileRef.current && !profileRef.current.contains(target)) {
+        setShowProfileDropdown(false);
+      }
+      if (timerRef.current && !timerRef.current.contains(target)) {
+        setShowTimerActions(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, []);
+
+  const loadSearchIndex = async () => {
+    try {
+      const [tList, dList, lList] = await Promise.all([
+        taskApi.getTasks().catch(() => []),
+        crmApi.getDeals().catch(() => []),
+        crmApi.getLeads().catch(() => []),
+      ]);
+      if (tList) setTasksCache(tList);
+      if (dList) setDealsCache(dList);
+      if (lList) setLeadsCache(lList);
+    } catch (e) {}
+  };
 
   // Poll server for active timer every 10s and on mount
   const fetchActiveTimer = async () => {
@@ -117,6 +172,39 @@ export const Topbar: React.FC<TopbarProps> = ({
       : name.slice(0, 2).toUpperCase();
   };
 
+  const query = searchTerm.trim().toLowerCase();
+  const matchingTasks = query
+    ? tasksCache.filter(
+        (t) =>
+          t.taskCode?.toLowerCase().includes(query) ||
+          t.title?.toLowerCase().includes(query) ||
+          t.description?.toLowerCase().includes(query) ||
+          (t.assigneeNames || t.assigneeName || '')?.toLowerCase().includes(query) ||
+          t.type?.toLowerCase().includes(query) ||
+          t.priority?.toLowerCase().includes(query) ||
+          t.status?.toLowerCase().includes(query)
+      ).slice(0, 6)
+    : [];
+
+  const matchingDeals = query
+    ? dealsCache.filter(
+        (d) =>
+          d.title?.toLowerCase().includes(query) ||
+          d.customerName?.toLowerCase().includes(query) ||
+          d.stage?.toLowerCase().includes(query)
+      ).slice(0, 3)
+    : [];
+
+  const matchingLeads = query
+    ? leadsCache.filter(
+        (l) =>
+          l.firstName?.toLowerCase().includes(query) ||
+          (l.lastName || '')?.toLowerCase().includes(query) ||
+          (l.company || '')?.toLowerCase().includes(query) ||
+          (l.email || '')?.toLowerCase().includes(query)
+      ).slice(0, 3)
+    : [];
+
   return (
     <header className="h-16 bg-white border-b border-border-custom px-4 sm:px-6 flex items-center justify-between sticky top-0 z-30 shadow-sm gap-2 sm:gap-4">
       {/* Mobile Hamburger Button & Search Input */}
@@ -131,15 +219,179 @@ export const Topbar: React.FC<TopbarProps> = ({
             <Menu className="w-5 h-5" />
           </button>
         )}
-        <div className="relative w-full">
-          <Search className="w-4 h-4 text-text-secondary absolute left-3 top-1/2 -translate-y-1/2" />
+        <div ref={searchRef} className="relative w-full">
+          <Search className="w-4 h-4 text-text-secondary absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
           <input
             type="text"
             placeholder="Search tasks, leads, deals..."
             value={searchTerm}
-            onChange={(e) => onSearchChange(e.target.value)}
-            className="w-full pl-9 pr-3 sm:pr-4 py-2 bg-purple-50 hover:bg-purple-100/50 focus:bg-white text-xs sm:text-sm text-text-primary rounded-lg border border-transparent focus:border-primary outline-none transition-all placeholder:text-text-secondary"
+            onFocus={() => {
+              loadSearchIndex();
+              if (searchTerm.trim().length > 0) setShowSearchDropdown(true);
+            }}
+            onChange={(e) => {
+              onSearchChange(e.target.value);
+              setShowSearchDropdown(true);
+            }}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                setShowSearchDropdown(false);
+                if (onNavigateTab) onNavigateTab('tasks');
+              } else if (e.key === 'Escape') {
+                setShowSearchDropdown(false);
+              }
+            }}
+            className="w-full pl-9 pr-8 py-2 bg-purple-50 hover:bg-purple-100/50 focus:bg-white text-xs sm:text-sm text-text-primary rounded-lg border border-transparent focus:border-primary outline-none transition-all placeholder:text-text-secondary"
           />
+          {searchTerm && (
+            <button
+              type="button"
+              onClick={() => {
+                onSearchChange('');
+                setShowSearchDropdown(false);
+              }}
+              className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 p-0.5 rounded-full hover:bg-gray-100 transition-colors"
+              title="Clear search"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          )}
+
+          {/* Quick Search Results Dropdown */}
+          {showSearchDropdown && searchTerm.trim().length > 0 && (
+            <div className="absolute left-0 right-0 mt-2 bg-white rounded-xl shadow-2xl border border-border-custom z-50 overflow-hidden max-h-96 flex flex-col animate-in fade-in slide-in-from-top-1">
+              <div className="px-3 py-2 bg-purple-50/70 border-b border-border-custom flex items-center justify-between text-[11px] text-text-secondary font-semibold">
+                <span>Search Results for "{searchTerm}"</span>
+                <span className="text-[10px] text-primary bg-purple-100 px-2 py-0.5 rounded-full font-bold">
+                  {matchingTasks.length + matchingDeals.length + matchingLeads.length} found
+                </span>
+              </div>
+
+              <div className="overflow-y-auto divide-y divide-gray-100 p-1 flex-1">
+                {/* Matching Tasks */}
+                {matchingTasks.length > 0 && (
+                  <div className="py-1">
+                    <div className="px-2.5 py-1 text-[10px] font-bold text-gray-400 uppercase tracking-wider flex items-center gap-1.5">
+                      <CheckCircle2 className="w-3 h-3 text-purple-600" /> Tasks ({matchingTasks.length})
+                    </div>
+                    {matchingTasks.map((t) => (
+                      <div
+                        key={t.id}
+                        onClick={() => {
+                          onOpenTask(t.id);
+                          setShowSearchDropdown(false);
+                        }}
+                        className="px-2.5 py-2 hover:bg-purple-50/80 rounded-lg cursor-pointer transition-colors flex items-center justify-between gap-2"
+                      >
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-2">
+                            <span className="font-mono text-[11px] font-bold text-primary bg-purple-100 px-1.5 py-0.5 rounded">
+                              {t.taskCode}
+                            </span>
+                            <span className="text-xs font-semibold text-text-primary truncate">
+                              {t.title}
+                            </span>
+                          </div>
+                          <div className="text-[11px] text-text-secondary mt-0.5 flex items-center gap-2">
+                            <span>Status: {t.status}</span>
+                            <span>•</span>
+                            <span>Priority: {t.priority}</span>
+                            {t.assigneeName && (
+                              <>
+                                <span>•</span>
+                                <span>👤 {t.assigneeName}</span>
+                              </>
+                            )}
+                          </div>
+                        </div>
+                        <ArrowRight className="w-3.5 h-3.5 text-gray-400 shrink-0" />
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* Matching Deals */}
+                {matchingDeals.length > 0 && (
+                  <div className="py-1">
+                    <div className="px-2.5 py-1 text-[10px] font-bold text-gray-400 uppercase tracking-wider flex items-center gap-1.5">
+                      <Briefcase className="w-3 h-3 text-emerald-600" /> Deals ({matchingDeals.length})
+                    </div>
+                    {matchingDeals.map((d) => (
+                      <div
+                        key={d.id}
+                        onClick={() => {
+                          if (onNavigateTab) onNavigateTab('crm');
+                          setShowSearchDropdown(false);
+                        }}
+                        className="px-2.5 py-2 hover:bg-purple-50/80 rounded-lg cursor-pointer transition-colors flex items-center justify-between gap-2"
+                      >
+                        <div className="min-w-0 flex-1">
+                          <div className="text-xs font-semibold text-text-primary truncate">
+                            {d.title}
+                          </div>
+                          <div className="text-[11px] text-text-secondary">
+                            ${d.dealValue?.toLocaleString()} • Stage: {d.stage}
+                          </div>
+                        </div>
+                        <ArrowRight className="w-3.5 h-3.5 text-gray-400 shrink-0" />
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* Matching Leads */}
+                {matchingLeads.length > 0 && (
+                  <div className="py-1">
+                    <div className="px-2.5 py-1 text-[10px] font-bold text-gray-400 uppercase tracking-wider flex items-center gap-1.5">
+                      <Users className="w-3 h-3 text-blue-600" /> Leads ({matchingLeads.length})
+                    </div>
+                    {matchingLeads.map((l) => (
+                      <div
+                        key={l.id}
+                        onClick={() => {
+                          if (onNavigateTab) onNavigateTab('crm');
+                          setShowSearchDropdown(false);
+                        }}
+                        className="px-2.5 py-2 hover:bg-purple-50/80 rounded-lg cursor-pointer transition-colors flex items-center justify-between gap-2"
+                      >
+                        <div className="min-w-0 flex-1">
+                          <div className="text-xs font-semibold text-text-primary truncate">
+                            {l.firstName} {l.lastName || ''} {l.company ? `(${l.company})` : ''}
+                          </div>
+                          <div className="text-[11px] text-text-secondary">
+                            {l.email || 'No email'} • Status: {l.status}
+                          </div>
+                        </div>
+                        <ArrowRight className="w-3.5 h-3.5 text-gray-400 shrink-0" />
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* No items found */}
+                {matchingTasks.length === 0 && matchingDeals.length === 0 && matchingLeads.length === 0 && (
+                  <div className="p-4 text-center text-xs text-text-secondary">
+                    No tasks, leads, or deals found matching "<strong className="text-text-primary">{searchTerm}</strong>"
+                  </div>
+                )}
+              </div>
+
+              {/* Bottom footer bar */}
+              <div className="p-2 bg-gray-50 border-t border-border-custom flex items-center justify-between">
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (onNavigateTab) onNavigateTab('tasks');
+                    setShowSearchDropdown(false);
+                  }}
+                  className="w-full py-1.5 px-3 text-xs font-semibold text-primary hover:bg-purple-100 rounded-lg text-center transition-colors flex items-center justify-center gap-1.5"
+                >
+                  <span>Filter in Tasks Board</span>
+                  <ArrowRight className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       </div>
 
@@ -157,7 +409,7 @@ export const Topbar: React.FC<TopbarProps> = ({
 
         {/* Live Running Timer Chip (Top Priority USP) */}
         {runningTimer ? (
-          <div className="relative">
+          <div ref={timerRef} className="relative">
             <div
               onClick={() => setShowTimerActions(!showTimerActions)}
               className="flex items-center gap-2.5 px-3.5 py-1.5 bg-purple-50 border border-purple-200 text-primary rounded-full cursor-pointer hover:bg-purple-100 transition-all running-timer-pulse select-none"
@@ -212,7 +464,7 @@ export const Topbar: React.FC<TopbarProps> = ({
         )}
 
         {/* Notification Bell */}
-        <div className="relative">
+        <div ref={notifRef} className="relative">
           <button
             onClick={() => {
               setShowNotifDropdown(!showNotifDropdown);
@@ -269,7 +521,7 @@ export const Topbar: React.FC<TopbarProps> = ({
         </div>
 
         {/* User Profile Avatar */}
-        <div className="relative">
+        <div ref={profileRef} className="relative">
           <button
             onClick={() => {
               setShowProfileDropdown(!showProfileDropdown);

@@ -61,6 +61,7 @@ const MainLayout: React.FC = () => {
           searchTerm={searchTerm}
           onSearchChange={setSearchTerm}
           onToggleMobileMenu={() => setMobileMenuOpen(!mobileMenuOpen)}
+          onNavigateTab={(tab) => setActiveTab(tab)}
         />
 
         {/* Scrollable Page Body */}
@@ -77,10 +78,12 @@ const MainLayout: React.FC = () => {
               onScheduleMeeting={handleScheduleMeetingFromTask}
               selectedTaskId={selectedTaskId}
               onClearSelectedTask={() => setSelectedTaskId(null)}
+              searchTerm={searchTerm}
+              onClearSearch={() => setSearchTerm('')}
             />
           )}
 
-          {activeTab === 'crm' && <CrmPage />}
+          {activeTab === 'crm' && <CrmPage searchTerm={searchTerm} />}
 
           {activeTab === 'api-handoff' && <ApiHandoffPage />}
 

@@ -39,12 +39,16 @@ interface TasksPageProps {
   onScheduleMeeting: (task: Task) => void;
   selectedTaskId?: number | null;
   onClearSelectedTask?: () => void;
+  searchTerm?: string;
+  onClearSearch?: () => void;
 }
 
 export const TasksPage: React.FC<TasksPageProps> = ({
   onScheduleMeeting,
   selectedTaskId,
   onClearSelectedTask,
+  searchTerm,
+  onClearSearch,
 }) => {
   const { user, hasPermission } = useAuth();
   const [tasks, setTasks] = useState<Task[]>([]);
@@ -498,6 +502,22 @@ export const TasksPage: React.FC<TasksPageProps> = ({
     }
     if (filterPriority !== 'ALL' && t.priority !== filterPriority) return false;
     if (filterType !== 'ALL' && t.type !== filterType) return false;
+
+    // Filter by Topbar search term across code, title, desc, assignee, type, priority, and status
+    if (searchTerm && searchTerm.trim() !== '') {
+      const q = searchTerm.toLowerCase().trim();
+      const codeMatch = t.taskCode?.toLowerCase().includes(q);
+      const titleMatch = t.title?.toLowerCase().includes(q);
+      const descMatch = t.description?.toLowerCase().includes(q);
+      const assigneeMatch = (t.assigneeNames || t.assigneeName || '')?.toLowerCase().includes(q);
+      const typeMatch = t.type?.toLowerCase().includes(q);
+      const priorityMatch = t.priority?.toLowerCase().includes(q);
+      const statusMatch = t.status?.toLowerCase().includes(q);
+      if (!codeMatch && !titleMatch && !descMatch && !assigneeMatch && !typeMatch && !priorityMatch && !statusMatch) {
+        return false;
+      }
+    }
+
     return true;
   });
 
@@ -598,6 +618,27 @@ export const TasksPage: React.FC<TasksPageProps> = ({
           <span>New Task</span>
         </button>
       </div>
+
+      {/* Active Search Filter Banner */}
+      {searchTerm && searchTerm.trim() !== '' && (
+        <div className="flex items-center justify-between px-4 py-2.5 bg-purple-50 border border-purple-200 rounded-xl text-xs animate-in fade-in">
+          <div className="flex items-center gap-2">
+            <span className="font-semibold text-text-secondary">Filtering Tasks:</span>
+            <span className="font-bold text-primary bg-white px-2 py-0.5 rounded border border-purple-200 shadow-2xs">
+              "{searchTerm}"
+            </span>
+            <span className="text-text-secondary">({filteredTasks.length} matching)</span>
+          </div>
+          {onClearSearch && (
+            <button
+              onClick={onClearSearch}
+              className="px-2.5 py-1 text-xs font-semibold text-purple-700 hover:text-rose-600 hover:bg-white rounded-lg transition-colors border border-transparent hover:border-rose-200"
+            >
+              Clear Search ×
+            </button>
+          )}
+        </div>
+      )}
 
       {statusError && (
         <div className="p-3 bg-rose-50 border border-rose-200 text-rose-700 text-xs rounded-xl flex items-center gap-2">

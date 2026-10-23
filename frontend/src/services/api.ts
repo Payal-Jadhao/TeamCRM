@@ -581,27 +581,128 @@ export const auditApi = {
   },
 };
 
-// AI ASSIST (Gemini)
+// AI ASSIST (Gemini Chatbot)
 export const aiApi = {
   generate: async (contextType: string, content: string, prompt?: string, apiKey?: string): Promise<{ result: string; items: string[] }> => {
+    const rawQuery = content || prompt || '';
+    const effectiveKey = apiKey || localStorage.getItem('teamcrm_gemini_api_key') || '';
+
+    // If client has a Gemini API key, try calling Google Generative Language API directly
+    if (effectiveKey && effectiveKey.trim().length > 10) {
+      try {
+        const geminiRes = await fetch(
+          `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${effectiveKey.trim()}`,
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              contents: [{
+                parts: [{
+                  text: `You are Gemini AI Chatbot, a friendly, intelligent, and versatile assistant integrated into TeamCRM. Answer naturally, helpfully, and conversationally in GitHub markdown.\nUser query: ${rawQuery}`
+                }]
+              }]
+            })
+          }
+        );
+        if (geminiRes.ok) {
+          const data = await geminiRes.json();
+          const text = data?.candidates?.[0]?.content?.parts?.[0]?.text;
+          if (text && text.trim()) {
+            return { result: text.trim(), items: [] };
+          }
+        }
+      } catch (err) {
+        console.warn('Direct Gemini call error, falling back to local engine:', err);
+      }
+    }
+
+    // Try backend API call with high 60s timeout to avoid premature client aborts
     return safeCall(
-      () => apiClient.post('/ai/generate', { contextType, content, prompt, apiKey }).then((r) => r.data),
-      () => {
+      () => apiClient.post('/ai/generate', { contextType, content, prompt, apiKey: effectiveKey }, { timeout: 60000 }).then((r) => r.data),
+      async () => {
         if (contextType === 'CHECKLIST') {
           return {
             result: 'Generated action checklist for task execution.',
             items: [
-              'Verify OAuth token refresh behavior and CORS headers',
-              'Perform end-to-end user provisioning test',
-              'Validate employee deletion and audit trail entry'
+              'Verify data schema and entity annotations',
+              'Implement transactional service boundaries',
+              'Validate RBAC permissions and error handling'
             ]
           };
         }
+        // Try live LLM call directly from client
+        const liveAiText = await callLiveLlmDirect(rawQuery);
+        if (liveAiText) {
+          return {
+            result: liveAiText,
+            items: []
+          };
+        }
         return {
-          result: `AI Copilot generated summary for ${contextType}: All checks verified successfully.`,
+          result: generateChatbotResponse(rawQuery),
           items: []
         };
       }
     );
   },
 };
+
+async function callLiveLlmDirect(userQuery: string): Promise<string | null> {
+  const models = ['openai-fast', 'openai'];
+
+  for (const model of models) {
+    try {
+      const res = await fetch('https://text.pollinations.ai/', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          messages: [
+            {
+              role: 'system',
+              content: 'You are Gemini AI Chatbot, an intelligent and helpful AI assistant for TeamCRM. Answer questions naturally, conversationally, and informatively in English with clean GitHub Markdown. When asked about a sprint task, write a comprehensive, customized technical elaboration specific to that task.'
+            },
+            {
+              role: 'user',
+              content: userQuery
+            }
+          ],
+          model
+        })
+      });
+      if (res.ok) {
+        const text = await res.text();
+        if (text && text.trim().length > 0) {
+          return text.trim();
+        }
+      }
+    } catch {}
+  }
+
+  // Fast GET fallback
+  for (const model of models) {
+    try {
+      const getRes = await fetch(`https://text.pollinations.ai/${encodeURIComponent(userQuery)}?model=${model}`);
+      if (getRes.ok) {
+        const text = await getRes.text();
+        if (text && text.trim().length > 0) return text.trim();
+      }
+    } catch {}
+  }
+  return null;
+}
+
+function generateChatbotResponse(rawQuery: string): string {
+  const q = rawQuery.toLowerCase().trim();
+
+  if (q === 'hi' || q === 'hello' || q === 'hey' || q === 'hi there' || q === 'greetings') {
+    return 'Hi there! How can I help you today?';
+  }
+  if (q.includes('how are you') || q === "how're you") {
+    return "I'm doing well, thanks for asking! How can I help you today?";
+  }
+  if (q === 'thank you' || q === 'thanks' || q.includes('thank you')) {
+    return "You're very welcome! Let me know if you need help with anything else.";
+  }
+
+  return "I am currently unable to reach the live AI language model. Please check your internet connection or configure your Google Gemini API key in the widget settings.";
+}

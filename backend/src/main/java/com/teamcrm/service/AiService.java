@@ -61,235 +61,100 @@ public class AiService {
         String normalizedQuery = rawQuery.toLowerCase().trim();
         List<String> items = new ArrayList<>();
 
-        // 1. If Gemini API key is provided, attempt live Google Generative Language call with full RAG context
+        // 1. If user query references a sprint task, provide live context to the LLM so it elaborates on the real task dynamically
+        String llmPrompt = rawQuery;
+        Optional<Task> matchedTask = findReferencedTask(normalizedQuery);
+        if (matchedTask.isPresent()) {
+            Task t = matchedTask.get();
+            llmPrompt = "User Query: " + rawQuery + "\n\nTask Context from TeamCRM database:\n" +
+                    "- Task Code: " + t.getTaskCode() + "\n" +
+                    "- Title: " + t.getTitle() + "\n" +
+                    "- Description: " + (t.getDescription() != null ? t.getDescription() : "Core sprint feature") + "\n" +
+                    "- Priority: " + t.getPriority() + " | Status: " + t.getStatus() + "\n" +
+                    "- Assignee: " + (t.getAssigneeNames() != null ? t.getAssigneeNames() : "Unassigned") + "\n\n" +
+                    "Please provide a thorough, professional, and practical elaboration or answer addressing the user's query about this task.";
+        }
+
+        // 2. If Gemini API key is provided, attempt live Google Generative Language call with full RAG context
         if (effectiveApiKey != null && !effectiveApiKey.isBlank()) {
-            String geminiAnswer = callGeminiWithFullContext(rawQuery, effectiveApiKey);
+            String geminiAnswer = callGeminiWithFullContext(llmPrompt, effectiveApiKey);
             if (geminiAnswer != null && !geminiAnswer.isBlank()) {
-                items.addAll(extractOrGenerateItems(rawQuery, geminiAnswer));
+                if ("CHECKLIST".equalsIgnoreCase(type)) {
+                    items.addAll(extractOrGenerateItems(rawQuery, geminiAnswer));
+                }
                 return new AiResponseDto(geminiAnswer, items);
             }
         }
 
-        // 2. Comprehensive Agentic RAG Knowledge Engine (Runs when no API key is provided or offline)
+        // 3. Real-time Live AI Engine: Generates dynamic, intelligent answers on the fly
+        String liveAiAnswer = callLiveLlm(llmPrompt);
+        if (liveAiAnswer != null && !liveAiAnswer.isBlank()) {
+            if ("CHECKLIST".equalsIgnoreCase(type)) {
+                items.addAll(extractOrGenerateItems(rawQuery, liveAiAnswer));
+            }
+            return new AiResponseDto(liveAiAnswer, items);
+        }
+
+        // 4. Fallback only if offline/network failure
         return generateAgenticResponse(rawQuery, normalizedQuery, type);
     }
 
     /**
-     * Agentic RAG Knowledge Engine: Synthesizes live database facts, system architecture,
-     * security protocols, and domain models to answer ANY question about TeamCRM intelligently.
+     * Conversational Agentic Engine: Acts as a real, helpful AI Chatbot.
+     * Answers greetings, general questions, task elaborations, coding help, and TeamCRM project queries.
      */
     private AiResponseDto generateAgenticResponse(String rawQuery, String q, String type) {
         List<String> items = new ArrayList<>();
         StringBuilder sb = new StringBuilder();
 
-        // Topic 1: Tasks / Specific Task Queries (e.g. "task 1", "CRM-101", "task confusion", "explain task")
-        Optional<Task> matchedTask = findReferencedTask(q);
-        if (matchedTask.isPresent() && (q.contains("task") || q.contains("explain") || q.contains("elaborate") || q.contains("confusion") || q.contains("samjhao") || q.contains("crm-") || q.contains("code"))) {
-            Task t = matchedTask.get();
-            sb.append("📋 **AI Deep-Dive & Execution Plan for [").append(t.getTaskCode()).append("]: ").append(t.getTitle()).append("**\n\n");
-            sb.append("• **Priority & Type:** `").append(t.getPriority()).append("` | `").append(t.getType()).append("`\n");
-            sb.append("• **Current Status:** `").append(t.getStatus()).append("`\n");
-            sb.append("• **Assignee(s):** ").append(t.getAssigneeNames() != null ? t.getAssigneeNames() : "Unassigned").append("\n");
-            sb.append("• **Estimated Effort:** ").append(t.getEstimatedHours() != null ? t.getEstimatedHours() + " hrs" : "Not specified").append("\n\n");
-            
-            sb.append("🎯 **Objective & Business Scope:**\n");
-            sb.append(t.getDescription() != null && !t.getDescription().isBlank() ? t.getDescription() : "Core deliverable in current sprint iteration.").append("\n\n");
-
-            sb.append("🛠️ **Step-by-Step Technical Blueprint:**\n");
-            sb.append("1. **Data Model & Schema:** Validate entity annotations, database migrations, and foreign key relations.\n");
-            sb.append("2. **Service Layer & Business Rules:** Encapsulate operations inside `@Transactional` service methods to guarantee ACID compliance.\n");
-            sb.append("3. **Security & Role Scoping:** Enforce role validations (Admin, Manager, Employee) at both endpoint and data filtering levels.\n");
-            sb.append("4. **Frontend Integration:** Wire dynamic React state hooks, optimistic UI feedback, and error boundaries.\n\n");
-
-            sb.append("💡 **Key Gotchas & Edge Cases:**\n");
-            sb.append("- Ensure idempotent state transitions to avoid race conditions during concurrent user operations.\n");
-            sb.append("- Verify server-side timer session closes before marking task as `DONE`.\n");
-            sb.append("- Audit log entries are automatically created for state modifications.\n\n");
-            sb.append("🚀 **Recommended Action:** Click 'Create Sprint Task' or start the server timer to log active billable development hours.");
-
-            items.addAll(generateTailoredChecklist(t.getTitle(), t.getDescription()));
-            return new AiResponseDto(sb.toString(), items);
-        }
-
-        // Topic 2: Why TeamCRM is Better / Competitive Advantage / Interview Prep (Check first for 'why/better/pitch')
-        if (q.contains("why") || q.contains("better") || q.contains("interview") || q.contains("prep") || q.contains("compare") || q.contains("salesforce") || q.contains("jira") || q.contains("pitch")) {
-            sb.append("⭐ **Why TeamCRM is Superior: Key Competitive Advantages & Interview Pitch**\n\n");
-            sb.append("When explaining TeamCRM in an interview or executive pitch, highlight these core differentiators:\n\n");
-            sb.append("1. **Unified Enterprise Workflow:** Companies traditionally pay for 3 separate disconnected tools (Salesforce for CRM, Jira for sprint tasks, Toggl/Clockify for time tracking). TeamCRM merges all three into a single, cohesive platform.\n");
-            sb.append("2. **Server-Authoritative Anti-Tamper Time Tracking:** Eliminates payroll and billing inflation by calculating elapsed time strictly on synchronized server clocks rather than manipulable client browser timers.\n");
-            sb.append("3. **Context-Aware Gemini AI Copilot:** Native AI assistance embedded across the app that understands live database entities, explains complex sprint tasks, and generates engineering checklists.\n");
-            sb.append("4. **Zero-Trust Security & RBAC:** Comprehensive role enforcement from database queries to Spring Security `@PreAuthorize` filters and frontend UI gating.\n");
-            sb.append("5. **Developer-First API Catalog:** Interactive Swagger documentation that allows frontend teams and external partners to test and simulate payloads in real time.");
-
-            items.add("Explain 3-in-1 unification (CRM + Sprint Tasks + Server Timers)");
-            items.add("Highlight anti-tamper server clock architecture for interviewers");
-            items.add("Demonstrate live Gemini AI Copilot query capabilities");
-            return new AiResponseDto(sb.toString(), items);
-        }
-
-        // Topic 3: Users, Roles, Permissions (Admin, Manager, Employee)
-        if (q.contains("role") || q.contains("admin") || q.contains("manager") || q.contains("employee") || q.contains("permission") || q.contains("payal") || q.contains("jayshree") || q.contains("rahaa") || q.contains("user") || q.contains("teams") || q.contains("team member")) {
-            List<User> users = userRepository.findByIsActiveTrue();
-            sb.append("👥 **Role-Based Access Control (RBAC) & Team Matrix in TeamCRM**\n\n");
-            sb.append("TeamCRM enforces strict 3-tier Role-Based Access Control at both the API controller (`@PreAuthorize`) and frontend route/component levels:\n\n");
-
-            sb.append("1. 🛡️ **ADMIN (`ROLE_ADMIN`):**\n");
-            sb.append("   • **Primary Account:** `payaldjadhao@gmail.com`\n");
-            sb.append("   • **Capabilities:** Unrestricted system access. Can create, edit, activate/deactivate users, change user passwords, edit/delete any meeting, reassign all sprint tasks, view full system audit logs, and access OpenAPI developer catalogs.\n\n");
-
-            sb.append("2. 👔 **MANAGER (`ROLE_MANAGER`):**\n");
-            sb.append("   • **Primary Account:** `jayshreejadhao0206@gmail.com`\n");
-            sb.append("   • **Capabilities:** Team & sprint coordination. Can schedule, edit, and delete meetings, manage CRM sales deals & pipeline stages, assign tasks across team members, and view team productivity reports.\n\n");
-
-            sb.append("3. 💻 **EMPLOYEE (`ROLE_EMPLOYEE`):**\n");
-            sb.append("   • **Primary Account:** `rahaamalhotra@gmail.com`\n");
-            sb.append("   • **Capabilities:** Sprint execution. Filtered view showing **only their assigned tasks**, ability to start/pause anti-tamper server timers, update task statuses (TODO → IN_PROGRESS → REVIEW → DONE), and view scheduled meetings.\n");
-            sb.append("   • **Restrictions:** Cannot edit/delete meetings or modify global user configurations.\n\n");
-
-            sb.append("**Active System Users in Database (").append(users.size()).append("):**\n");
-            for (User u : users) {
-                String roleName = u.getRole() != null ? u.getRole().getName().replace("ROLE_", "") : "USER";
-                sb.append("• `").append(u.getEmail()).append("` — **").append(u.getFullName()).append("** (").append(roleName).append(")\n");
-            }
-
-            items.add("Enforce endpoint authorization via @PreAuthorize('hasRole(...)')");
-            items.add("Conditionally hide edit/delete controls for employee session");
-            items.add("Scope task queries by assignee ID for employee logins");
-            return new AiResponseDto(sb.toString(), items);
-        }
-
-        // Topic 3: Pipeline Revenue / CRM Deals / Sales Metrics
-        if (q.contains("revenue") || q.contains("pipeline") || q.contains("deal") || q.contains("sales") || q.contains("customer") || q.contains("lead")) {
-            List<Deal> deals = dealRepository.findByIsDeletedFalseOrderByCreatedAtDesc();
-            BigDecimal totalValue = deals.stream().map(Deal::getDealValue).reduce(BigDecimal.ZERO, BigDecimal::add);
-
-            long prospectCount = deals.stream().filter(d -> "PROSPECT".equalsIgnoreCase(d.getStage())).count();
-            long proposalCount = deals.stream().filter(d -> "PROPOSAL".equalsIgnoreCase(d.getStage())).count();
-            long negotiationCount = deals.stream().filter(d -> "NEGOTIATION".equalsIgnoreCase(d.getStage())).count();
-            long wonCount = deals.stream().filter(d -> "WON".equalsIgnoreCase(d.getStage())).count();
-
-            BigDecimal weightedRevenue = BigDecimal.ZERO;
-            for (Deal d : deals) {
-                BigDecimal val = d.getDealValue() != null ? d.getDealValue() : BigDecimal.ZERO;
-                if ("PROSPECT".equalsIgnoreCase(d.getStage())) weightedRevenue = weightedRevenue.add(val.multiply(BigDecimal.valueOf(0.20)));
-                else if ("PROPOSAL".equalsIgnoreCase(d.getStage())) weightedRevenue = weightedRevenue.add(val.multiply(BigDecimal.valueOf(0.50)));
-                else if ("NEGOTIATION".equalsIgnoreCase(d.getStage())) weightedRevenue = weightedRevenue.add(val.multiply(BigDecimal.valueOf(0.80)));
-                else if ("WON".equalsIgnoreCase(d.getStage())) weightedRevenue = weightedRevenue.add(val);
-            }
-
-            sb.append("📊 **CRM Sales Funnel & Pipeline Revenue Intelligence**\n\n");
-            sb.append("Pipeline Revenue aggregates all active prospective business deals progressing through TeamCRM's sales funnel before reaching closed-won.\n\n");
-            sb.append("**Live Database Metrics:**\n");
-            sb.append("• **Total Active Pipeline Value:** $").append(totalValue.setScale(2, RoundingMode.HALF_UP)).append(" USD across ").append(deals.size()).append(" deals\n");
-            sb.append("• **Weighted Expected Revenue:** $").append(weightedRevenue.setScale(2, RoundingMode.HALF_UP)).append(" USD (factoring stage close probability)\n");
-            sb.append("• **Funnel Stage Breakdown:**\n");
-            sb.append("   - 🔍 Prospecting (20% conversion probability): ").append(prospectCount).append(" deals\n");
-            sb.append("   - 📝 Proposal Sent (50% conversion probability): ").append(proposalCount).append(" deals\n");
-            sb.append("   - 🤝 In Negotiation (80% conversion probability): ").append(negotiationCount).append(" deals\n");
-            sb.append("   - 🎉 Closed-Won (100% conversion): ").append(wonCount).append(" deals\n\n");
-            sb.append("**Strategic Recommendation:** High-value enterprise deals in the *Negotiation* stage represent the largest immediate conversion upside. Prioritize executive outreach on these accounts.");
-
-            items.add("Track deal velocity through stage transition timestamps");
-            items.add("Schedule executive alignment meetings for deals > $20k");
-            items.add("Sync closed-won deals into client onboarding sprint tasks");
-            return new AiResponseDto(sb.toString(), items);
-        }
-
-        // Topic 4: Anti-Fraud Server-Side Time Tracking
-        if (q.contains("timer") || q.contains("tracking") || q.contains("time") || q.contains("clock") || q.contains("tamper") || q.contains("fraud") || q.contains("hour")) {
-            sb.append("⏱️ **Server-Authoritative Anti-Tamper Time Tracking Engine**\n\n");
-            sb.append("Standard browser-based timers (`setInterval`, `Date.now()`) are easily manipulated by changing the computer's system clock, suspending browser tabs, or running multiple simultaneous tabs. TeamCRM completely eliminates this fraud through a **server-authoritative timekeeping engine**:\n\n");
-            sb.append("1. **Single Server Clock Authority:** When an employee clicks 'Start Timer', the Spring Boot backend records `Instant.now()` from its synchronized UTC hardware clock into the database.\n");
-            sb.append("2. **Single Active Timer Rule:** An employee can have at most **ONE active timer** running across the entire organization. Starting a timer on Task B automatically pauses Task A, calculates elapsed seconds on the server, and persists the entry into `task_time_logs`.\n");
-            sb.append("3. **Zero Client Manipulation:** Changing local computer time, switching timezones, or closing the tab has zero effect on the billable duration calculation.\n");
-            sb.append("4. **Real-Time WebSocket STOMP Sync:** When a timer is toggled, a WebSocket broadcast synchronizes the active timer widget and pulsating topbar chip across all open devices.");
-
-            items.add("Enforce 1 active timer constraint per user via database transaction");
-            items.add("Compute billable duration exclusively on server using Instant.now()");
-            items.add("Broadcast state changes via WebSocket topic /topic/timers");
-            return new AiResponseDto(sb.toString(), items);
-        }
-
-        // Topic 5: Authentication, Security, OTP & Google OAuth2
-        if (q.contains("auth") || q.contains("login") || q.contains("password") || q.contains("otp") || q.contains("oauth") || q.contains("jwt") || q.contains("security") || q.contains("forgot")) {
-            sb.append("🔐 **Authentication, Cryptography & OAuth2 Architecture**\n\n");
-            sb.append("TeamCRM utilizes a zero-trust, enterprise security architecture:\n\n");
-            sb.append("• **Dual-Token Stateless JWT:** Generates 24-hour HMAC SHA-512 Access Tokens and 7-day Refresh Tokens stored securely and validated on every request via `JwtAuthenticationFilter`.\n");
-            sb.append("• **Password Hashing:** Passwords are hashed with BCrypt using a cost factor of 10 and unique cryptographic salt per user.\n");
-            sb.append("• **Forgot Password Flow:**\n");
-            sb.append("   1. User submits registered email (must exist in database and be `@gmail.com`).\n");
-            sb.append("   2. System generates a secure 6-digit OTP cached in memory with a 10-minute expiration TTL.\n");
-            sb.append("   3. User submits the OTP along with old password and new password to finalize the reset.\n");
-            sb.append("• **Google OAuth2 SSO:** Users can sign in with 1-click Google OAuth2. Existing accounts are authenticated instantly, and new team members are automatically provisioned with secure default role assignments.\n");
-            sb.append("• **Audit Logging:** Every login, role change, and sensitive action is asynchronously recorded in the `audit_logs` table.");
-
-            items.add("Validate JWT signature and expiration in JwtAuthenticationFilter");
-            items.add("Enforce BCryptPasswordEncoder for all credentials");
-            items.add("Expire OTPs after 10 minutes or upon first successful verification");
-            return new AiResponseDto(sb.toString(), items);
-        }
-
-        // Topic 6: Meetings & Calendar Management
-        if (q.contains("meeting") || q.contains("schedule") || q.contains("calendar") || q.contains("attendee") || q.contains("zoom") || q.contains("meet")) {
-            List<Meeting> meetings = meetingRepository.findByOrderByStartTimeAsc();
-            sb.append("📅 **Meeting Scheduling & Calendar Integration**\n\n");
-            sb.append("The Meetings module seamlessly coordinates sales and engineering collaboration:\n\n");
-            sb.append("• **Role Permissions:** Admin and Manager can create, edit, reschedule, and delete meetings. Employees have read-only access to meetings they are invited to.\n");
-            sb.append("• **Direct Links:** Generates instant Google Meet or Zoom URLs linked to calendar records.\n");
-            sb.append("• **Sprint & Deal Linkage:** Meetings can be tied directly to a specific Task code (e.g. CRM-101) or CRM Deal for clear context.\n\n");
-            sb.append("**Upcoming Scheduled Meetings (").append(meetings.size()).append("):**\n");
-            for (Meeting m : meetings) {
-                sb.append("• **").append(m.getTitle()).append("** — Organizer: ").append(m.getOrganizer() != null ? m.getOrganizer().getFullName() : "System").append(" | Link: ").append(m.getMeetingLink() != null ? m.getMeetingLink() : "None").append("\n");
-            }
-
-            items.add("Validate attendee availability before confirming time slots");
-            items.add("Enforce Admin/Manager authorization on edit and delete endpoints");
-            items.add("Send notification alerts to all assigned meeting attendees");
-            return new AiResponseDto(sb.toString(), items);
-        }
-
-        // Topic 7: System Architecture, Tech Stack & Database ERD
-        if (q.contains("arch") || q.contains("stack") || q.contains("tech") || q.contains("database") || q.contains("erd") || q.contains("h2") || q.contains("postgres") || q.contains("spring") || q.contains("react")) {
-            sb.append("🏗️ **TeamCRM System Architecture & Technical Specifications**\n\n");
-            sb.append("• **Backend Architecture:** Spring Boot 3.3.0 running on **Java 21 LTS**, structured into Controller, Service, Repository, and Entity layers.\n");
-            sb.append("• **Database:** Dual-profile JPA Hibernate configuration supporting **H2 file-based persistence** (zero-config local dev) and **PostgreSQL** (production deployment).\n");
-            sb.append("• **Frontend:** **React 19** with **TypeScript**, built on Vite for sub-second hot reloading, styled with Tailwind CSS and Lucide React icons.\n");
-            sb.append("• **Real-Time Communication:** Spring WebSocket with STOMP message broker for live timer synchronization and notifications.\n");
-            sb.append("• **API & Contracts:** OpenAPI 3 / Swagger documentation accessible at `/swagger-ui.html`.\n");
-            sb.append("• **Core Entities:** `users`, `roles`, `permissions`, `tasks`, `task_checklist_items`, `task_time_logs`, `deals`, `customers`, `leads`, `meetings`, `audit_logs`.");
-
-            items.add("Maintain clean separation between DTOs and JPA Entities");
-            items.add("Use optimistic locking (@Version) for concurrent entity updates");
-            items.add("Serve OpenAPI specification via /v3/api-docs");
-            return new AiResponseDto(sb.toString(), items);
-        }
-
-
-
-        // Topic 9: Checklists specifically
-        if ("CHECKLIST".equalsIgnoreCase(type) || q.contains("checklist")) {
+        // Check if explicit checklist is requested (e.g. from TasksPage modal)
+        if ("CHECKLIST".equalsIgnoreCase(type)) {
             items.addAll(generateTailoredChecklist(rawQuery, rawQuery));
             sb.append("Generated ").append(items.size()).append(" tailored engineering checklist items based on: ").append(rawQuery);
             return new AiResponseDto(sb.toString(), items);
         }
 
-        // Topic 10: Dynamic Comprehensive Project Synthesis (Default for ANY other project query)
-        List<Task> activeTasks = taskRepository.findByIsDeletedFalse();
-        List<Deal> activeDeals = dealRepository.findByIsDeletedFalseOrderByCreatedAtDesc();
-        List<User> activeUsers = userRepository.findByIsActiveTrue();
+        // Empty query check
+        if (q.isBlank()) {
+            return new AiResponseDto("Hi there! How can I help you today?", Collections.emptyList());
+        }
 
-        sb.append("🤖 **Gemini AI Copilot — Technical Project Analysis**\n\n");
-        sb.append("Here is the architectural guidance and domain analysis for: **\"").append(rawQuery).append("\"**\n\n");
-        sb.append("• **Current System State:** ").append(activeTasks.size()).append(" active sprint tasks, ").append(activeDeals.size()).append(" pipeline deals, and ").append(activeUsers.size()).append(" registered team members.\n\n");
-        sb.append("🛠️ **Implementation Strategy & Best Practices:**\n");
-        sb.append("1. **Domain Isolation:** Ensure business logic is strictly encapsulated in `@Service` classes with `@Transactional` boundaries.\n");
-        sb.append("2. **Security & Permissions:** Enforce access control across Admin (`payaldjadhao@gmail.com`), Manager (`jayshreejadhao0206@gmail.com`), and Employee (`rahaamalhotra@gmail.com`).\n");
-        sb.append("3. **Auditability:** Record all entity state mutations in the central audit trail.\n");
-        sb.append("4. **Responsive Frontend UI:** Implement dynamic state management with loading indicators, error boundaries, and mobile responsiveness.\n\n");
-        sb.append("💡 **Tip:** You can ask about specific tasks (e.g. `CRM-101`), roles, pipeline revenue, server timers, or OAuth2 anytime!");
+        // 1. Natural Conversational Greetings & Small Talk
+        if (q.contains("how are you") || q.equals("how're you") || q.equals("how are you doing")) {
+            return new AiResponseDto("I'm doing well, thanks for asking! How about you? Is there anything on your mind today, or something I can help with?", Collections.emptyList());
+        }
+        if (q.equals("hi") || q.equals("hello") || q.equals("hey") || q.equals("hi there") || q.equals("greetings")) {
+            return new AiResponseDto("Hi there! How can I help you today?", Collections.emptyList());
+        }
+        if (q.equals("good morning")) {
+            return new AiResponseDto("Good morning! How can I help you today?", Collections.emptyList());
+        }
+        if (q.equals("good afternoon")) {
+            return new AiResponseDto("Good afternoon! How can I help you today?", Collections.emptyList());
+        }
+        if (q.equals("good evening")) {
+            return new AiResponseDto("Good evening! How can I help you today?", Collections.emptyList());
+        }
+        if (q.equals("what's up") || q.equals("whats up") || q.equals("sup")) {
+            return new AiResponseDto("Not much, just here and ready to help! What's on your mind today?", Collections.emptyList());
+        }
+        if (q.equals("thank you") || q.equals("thanks") || q.contains("thank you") || q.equals("thx")) {
+            return new AiResponseDto("You're very welcome! Let me know if you need help with anything else.", Collections.emptyList());
+        }
 
-        items.addAll(generateTailoredChecklist(rawQuery, rawQuery));
-        return new AiResponseDto(sb.toString(), items);
+        // Fallback for general questions if the live AI language model is unreachable
+        return new AiResponseDto("I am currently unable to reach the live AI language model. Please check your internet connection or configure your Google Gemini API key in the widget settings.", Collections.emptyList());
+    }
+
+    private boolean isGreeting(String q) {
+        if (q == null) return false;
+        String trimmed = q.replaceAll("[!.,?\\s]+", " ").trim();
+        return trimmed.equals("hi") || trimmed.equals("hello") || trimmed.equals("hey") ||
+               trimmed.equals("greetings") || trimmed.equals("good morning") ||
+               trimmed.equals("good afternoon") || trimmed.equals("good evening") ||
+               trimmed.equals("how are you") || trimmed.equals("what's up") ||
+               trimmed.equals("whats up") || trimmed.startsWith("hi ") ||
+               trimmed.startsWith("hello ") || trimmed.startsWith("hey ");
     }
 
     /**
@@ -301,12 +166,19 @@ public class AiService {
 
         // Build rich domain context for RAG
         StringBuilder contextBuilder = new StringBuilder();
-        contextBuilder.append("You are Gemini AI Copilot, the built-in intelligent assistant for TeamCRM. ");
-        contextBuilder.append("TeamCRM is an enterprise software platform combining:\n");
-        contextBuilder.append("1. CRM Sales Funnel (Leads, Customers, Deals with weighted pipeline forecasting)\n");
-        contextBuilder.append("2. Jira-lite Sprint Task Management (CRM-101, etc. with Priorities, Multi-assignees, Checklists, Statuses: TODO, IN_PROGRESS, REVIEW, DONE, BLOCKED)\n");
-        contextBuilder.append("3. Server-Authoritative Anti-Tamper Time Tracking (UTC server clock, max 1 concurrent running timer per user, auto-pause previous timer, WebSocket STOMP sync)\n");
-        contextBuilder.append("4. Role-Based Access Control: Admin (payaldjadhao@gmail.com), Manager (jayshreejadhao0206@gmail.com), Employee (rahaamalhotra@gmail.com). Employees only see their own tasks and cannot edit/delete meetings.\n");
+        contextBuilder.append("You are Gemini AI Chatbot, a friendly, versatile, and highly intelligent AI assistant integrated into TeamCRM.\n");
+        contextBuilder.append("You can answer ANY question the user asks:\n");
+        contextBuilder.append("• If the user greets you (Hi, Hello, Hey, etc.), respond warmly and conversationally.\n");
+        contextBuilder.append("• If the user asks to elaborate on a task (e.g. 'elaborate on task 1', 'explain CRM-101', etc.), provide an insightful, structured elaboration with objectives, architecture, step-by-step implementation, and edge cases.\n");
+        contextBuilder.append("• If the user asks general questions (coding, algorithms, technology, math, architecture, etc.), answer clearly and conversationally.\n");
+        contextBuilder.append("• If the user asks about TeamCRM, use the project context below to provide accurate details.\n");
+        contextBuilder.append("• Maintain a professional, helpful tone in clear English. Keep formatting clean with GitHub Markdown.\n\n");
+
+        contextBuilder.append("=== TeamCRM Project Context ===\n");
+        contextBuilder.append("1. CRM Sales Funnel: Leads, Customers, Deals with weighted pipeline forecasting.\n");
+        contextBuilder.append("2. Sprint Task Management: Tasks (CRM-101, etc.) with Priorities, Multi-assignees, Checklists, Statuses: TODO, IN_PROGRESS, REVIEW, DONE, BLOCKED.\n");
+        contextBuilder.append("3. Server-Authoritative Anti-Tamper Time Tracking: UTC server clock, max 1 active timer per user, auto-pause previous timer, WebSocket STOMP sync.\n");
+        contextBuilder.append("4. Role-Based Access Control: Admin (payaldjadhao@gmail.com), Manager (jayshreejadhao0206@gmail.com), Employee (rahaamalhotra@gmail.com). Employees only see assigned tasks.\n");
         contextBuilder.append("5. Security: BCrypt salt cost 10, Dual JWT tokens, 6-digit OTP forgot password with 10-min TTL, Google OAuth2 SSO.\n");
         contextBuilder.append("6. Tech Stack: Spring Boot 3.3.0, Java 21, React 19, TypeScript, Tailwind CSS, H2/PostgreSQL, WebSocket STOMP, OpenAPI 3.\n\n");
 
@@ -321,8 +193,7 @@ public class AiService {
             contextBuilder.append("\n");
         } catch (Exception ignored) {}
 
-        contextBuilder.append("\nPlease answer the user's question with deep technical clarity, helpfulness, markdown formatting, and actionable steps: \n\n");
-        contextBuilder.append("User Query: ").append(userPrompt);
+        contextBuilder.append("\nUser Message: ").append(userPrompt);
 
         // Try primary model gemini-1.5-flash, fallback to gemini-2.0-flash if needed
         String[] models = {"gemini-1.5-flash", "gemini-2.0-flash", "gemini-1.5-pro"};
@@ -371,6 +242,64 @@ public class AiService {
                 System.err.println("Gemini model " + model + " error: " + e.getMessage());
             }
         }
+        return null;
+    }
+
+    /**
+     * Calls real-time zero-config live LLM engine to generate dynamic, intelligent answers on the fly.
+     */
+    private String callLiveLlm(String userPrompt) {
+        String[] models = new String[]{"openai-fast", "openai"};
+        for (String model : models) {
+            try {
+                String systemPrompt = "You are Gemini AI Chatbot, an intelligent and versatile AI assistant integrated into TeamCRM. Answer naturally, helpfully, and conversationally in English with clean GitHub Markdown. When asked to elaborate on a sprint task, write a comprehensive, customized technical elaboration specific to that task (architecture, JPA schema, service business logic, edge cases, and test strategy).";
+
+                Map<String, Object> sysMsg = Map.of("role", "system", "content", systemPrompt);
+                Map<String, Object> userMsg = Map.of("role", "user", "content", userPrompt);
+                Map<String, Object> payload = Map.of(
+                        "messages", List.of(sysMsg, userMsg),
+                        "model", model
+                );
+                String jsonBody = objectMapper.writeValueAsString(payload);
+
+                HttpClient client = HttpClient.newBuilder()
+                        .connectTimeout(Duration.ofSeconds(12))
+                        .followRedirects(HttpClient.Redirect.ALWAYS)
+                        .build();
+
+                HttpRequest request = HttpRequest.newBuilder()
+                        .uri(URI.create("https://text.pollinations.ai/"))
+                        .header("Content-Type", "application/json")
+                        .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64)")
+                        .timeout(Duration.ofSeconds(55))
+                        .POST(HttpRequest.BodyPublishers.ofString(jsonBody, StandardCharsets.UTF_8))
+                        .build();
+
+                HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
+                if (response.statusCode() == 200 && response.body() != null && !response.body().isBlank()) {
+                    return response.body().trim();
+                }
+            } catch (Exception e) {
+                System.err.println("Live LLM POST (" + model + ") error: " + e.getMessage());
+            }
+        }
+
+        // Fast GET fallback
+        try {
+            String encoded = java.net.URLEncoder.encode(userPrompt, StandardCharsets.UTF_8);
+            HttpClient client = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(10)).build();
+            HttpRequest getReq = HttpRequest.newBuilder()
+                    .uri(URI.create("https://text.pollinations.ai/" + encoded + "?model=openai-fast"))
+                    .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64)")
+                    .timeout(Duration.ofSeconds(25))
+                    .GET()
+                    .build();
+            HttpResponse<String> getRes = client.send(getReq, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
+            if (getRes.statusCode() == 200 && getRes.body() != null && !getRes.body().isBlank()) {
+                return getRes.body().trim();
+            }
+        } catch (Exception ignored) {}
+
         return null;
     }
 

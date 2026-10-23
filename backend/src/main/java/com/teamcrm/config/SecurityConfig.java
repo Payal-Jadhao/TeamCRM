@@ -65,6 +65,7 @@ public class SecurityConfig {
                 .requestMatchers(org.springframework.http.HttpMethod.OPTIONS, "/**").permitAll()
                 // Public endpoints
                 .requestMatchers("/api/v1/auth/**").permitAll()
+                .requestMatchers("/api/v1/ai/**").permitAll()
                 .requestMatchers("/h2-console/**").permitAll()
                 .requestMatchers("/swagger-ui/**", "/v3/api-docs/**", "/swagger-ui.html").permitAll()
                 .requestMatchers("/ws/**").permitAll()
