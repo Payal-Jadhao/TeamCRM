@@ -164,7 +164,8 @@ export const AiCopilotWidget: React.FC<AiCopilotWidgetProps> = () => {
               >
                 <RotateCcw className="w-3.5 h-3.5" />
               </button>
-              <button
+              {/* Key icon commented out per user request */}
+              {/* <button
                 type="button"
                 onClick={() => setShowKeySettings(!showKeySettings)}
                 className={`p-1.5 rounded-lg text-text-secondary hover:text-text-primary transition-colors cursor-pointer ${showKeySettings ? 'bg-purple-100 text-primary' : 'hover:bg-white/80'
@@ -172,7 +173,7 @@ export const AiCopilotWidget: React.FC<AiCopilotWidgetProps> = () => {
                 title="Configure Google Gemini API Key"
               >
                 <Key className="w-3.5 h-3.5" />
-              </button>
+              </button> */}
               <button
                 type="button"
                 onClick={() => setIsOpen(false)}

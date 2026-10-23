@@ -17,7 +17,7 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<User | null>(() => {
-    const saved = localStorage.getItem('teamcrm_user');
+    const saved = sessionStorage.getItem('teamcrm_user');
     if (!saved) return null;
     try {
       const parsed = JSON.parse(saved);
@@ -25,7 +25,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         if (!parsed.roleName && parsed.role) {
           parsed.roleName = parsed.role;
         }
-        if (parsed.email && (parsed.email.includes('payal') || parsed.email.includes('jadhao')) && !parsed.email.includes('jayshree')) {
+        if (parsed.email && parsed.email.toLowerCase() === 'payaldjadhao@gmail.com') {
           parsed.roleName = 'ROLE_ADMIN';
           parsed.role = 'ROLE_ADMIN';
           parsed.teamTag = 'MANAGEMENT';
@@ -37,20 +37,20 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   });
   const [token, setToken] = useState<string | null>(() => {
-    return localStorage.getItem('teamcrm_token');
+    return sessionStorage.getItem('teamcrm_token');
   });
 
   const refreshProfile = async () => {
     if (!token) return;
     try {
       const profile = await authApi.getMe();
-      if (profile && (profile.email.includes('payal') || profile.email.includes('jadhao')) && !profile.email.includes('jayshree')) {
+      if (profile && profile.email.toLowerCase() === 'payaldjadhao@gmail.com') {
         profile.roleName = 'ROLE_ADMIN';
         (profile as any).role = 'ROLE_ADMIN';
         profile.teamTag = 'MANAGEMENT';
       }
       setUser(profile);
-      localStorage.setItem('teamcrm_user', JSON.stringify(profile));
+      sessionStorage.setItem('teamcrm_user', JSON.stringify(profile));
     } catch (e) {
       console.error('Failed to refresh user profile', e);
     }
@@ -65,25 +65,25 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const login = async (email: string, pass: string): Promise<AuthResponse> => {
     const res = await authApi.login(email, pass);
     setToken(res.accessToken);
-    localStorage.setItem('teamcrm_token', res.accessToken);
-    localStorage.setItem('teamcrm_refresh_token', res.refreshToken);
+    sessionStorage.setItem('teamcrm_token', res.accessToken);
+    sessionStorage.setItem('teamcrm_refresh_token', res.refreshToken);
 
-    const isPayal = (res.email.includes('payal') || res.email.includes('jadhao')) && !res.email.includes('jayshree');
-    const effectiveRole = isPayal ? 'ROLE_ADMIN' : res.role;
+    const isAdmin = res.email.toLowerCase() === 'payaldjadhao@gmail.com' || res.role === 'ROLE_ADMIN';
+    const effectiveRole = isAdmin ? 'ROLE_ADMIN' : res.role;
 
     const initialUser: User = {
       id: res.userId,
       email: res.email,
       fullName: res.fullName,
       roleName: effectiveRole,
-      teamTag: isPayal ? 'MANAGEMENT' : res.teamTag,
+      teamTag: isAdmin ? 'MANAGEMENT' : res.teamTag,
       isActive: true,
       isFirstLogin: res.isFirstLogin,
-      permissions: isPayal ? ['ROLE_ADMIN', 'USER_CREATE', 'USER_EDIT', 'USER_DEACTIVATE', 'ROLE_MANAGE', 'REPORT_VIEW', 'AUDIT_VIEW'] : Array.from(res.permissions || []),
+      permissions: isAdmin ? ['ROLE_ADMIN', 'USER_CREATE', 'USER_EDIT', 'USER_DEACTIVATE', 'ROLE_MANAGE', 'REPORT_VIEW', 'AUDIT_VIEW'] : Array.from(res.permissions || []),
     };
     (initialUser as any).role = effectiveRole;
     setUser(initialUser);
-    localStorage.setItem('teamcrm_user', JSON.stringify(initialUser));
+    sessionStorage.setItem('teamcrm_user', JSON.stringify(initialUser));
 
     return res;
   };
@@ -91,25 +91,25 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const loginWithGoogle = async (email: string, fullName?: string): Promise<AuthResponse> => {
     const res = await authApi.loginWithGoogle(email, fullName);
     setToken(res.accessToken);
-    localStorage.setItem('teamcrm_token', res.accessToken);
-    localStorage.setItem('teamcrm_refresh_token', res.refreshToken);
+    sessionStorage.setItem('teamcrm_token', res.accessToken);
+    sessionStorage.setItem('teamcrm_refresh_token', res.refreshToken);
 
-    const isPayal = (res.email.includes('payal') || res.email.includes('jadhao')) && !res.email.includes('jayshree');
-    const effectiveRole = isPayal ? 'ROLE_ADMIN' : res.role;
+    const isAdmin = res.email.toLowerCase() === 'payaldjadhao@gmail.com' || res.role === 'ROLE_ADMIN';
+    const effectiveRole = isAdmin ? 'ROLE_ADMIN' : res.role;
 
     const initialUser: User = {
       id: res.userId,
       email: res.email,
       fullName: res.fullName,
       roleName: effectiveRole,
-      teamTag: isPayal ? 'MANAGEMENT' : res.teamTag,
+      teamTag: isAdmin ? 'MANAGEMENT' : res.teamTag,
       isActive: true,
       isFirstLogin: res.isFirstLogin,
-      permissions: isPayal ? ['ROLE_ADMIN', 'USER_CREATE', 'USER_EDIT', 'USER_DEACTIVATE', 'ROLE_MANAGE', 'REPORT_VIEW', 'AUDIT_VIEW'] : Array.from(res.permissions || []),
+      permissions: isAdmin ? ['ROLE_ADMIN', 'USER_CREATE', 'USER_EDIT', 'USER_DEACTIVATE', 'ROLE_MANAGE', 'REPORT_VIEW', 'AUDIT_VIEW'] : Array.from(res.permissions || []),
     };
     (initialUser as any).role = effectiveRole;
     setUser(initialUser);
-    localStorage.setItem('teamcrm_user', JSON.stringify(initialUser));
+    sessionStorage.setItem('teamcrm_user', JSON.stringify(initialUser));
 
     return res;
   };
@@ -117,6 +117,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const logout = () => {
     setToken(null);
     setUser(null);
+    sessionStorage.removeItem('teamcrm_token');
+    sessionStorage.removeItem('teamcrm_refresh_token');
+    sessionStorage.removeItem('teamcrm_user');
     localStorage.removeItem('teamcrm_token');
     localStorage.removeItem('teamcrm_refresh_token');
     localStorage.removeItem('teamcrm_user');

@@ -16,12 +16,11 @@ export const LoginPage: React.FC = () => {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [changePassSuccess, setChangePassSuccess] = useState(false);
 
-  // Forgot Password Modal state
+  // Forgot Password Modal state (Step 1: Enter email, Step 2: Verify OTP, Step 3: Enter new password)
   const [isForgotModalOpen, setIsForgotModalOpen] = useState(false);
-  const [forgotStep, setForgotStep] = useState<1 | 2>(1);
+  const [forgotStep, setForgotStep] = useState<1 | 2 | 3>(1);
   const [forgotEmail, setForgotEmail] = useState('');
   const [forgotOtp, setForgotOtp] = useState('');
-  const [forgotOldPass, setForgotOldPass] = useState('');
   const [forgotNewPass, setForgotNewPass] = useState('');
   const [forgotConfirmPass, setForgotConfirmPass] = useState('');
   const [forgotLoading, setForgotLoading] = useState(false);
@@ -51,52 +50,8 @@ export const LoginPage: React.FC = () => {
         window.location.href = '/';
       }
     } catch (err: any) {
-      console.warn('Backend call network/mixed-content check on remote Vercel:', err);
-
-      // Seamless credentials authentication for Vercel deployment
-      const isValidAdmin = (normEmail === 'payaldjadhao@gmail.com') && (normPass === 'Pass@123');
-      const isValidEmp1 = (normEmail === 'payaldj2709@gmail.com') && (normPass === 'Pass@123' || normPass === 'Password123!');
-      const isValidEmp2 = (normEmail === 'payaljadhao2709@gmail.com') && (normPass === 'Pass@123');
-      const isValidManager = (normEmail === 'jayshreejadhao0206@gmail.com') && (normPass === 'Pass@123' || normPass === 'Pass@123321');
-      const isValidEmp3 = (normEmail === 'rahaamalhotra@gmail.com') && (normPass === 'Pass@123' || normPass === 'Pass#123');
-
-      if (isValidAdmin || isValidEmp1 || isValidEmp2 || isValidManager || isValidEmp3) {
-        const isPayal = normEmail.includes('payal') || normEmail.includes('jadhao');
-        const role = isPayal ? 'ROLE_ADMIN' : (isValidManager ? 'ROLE_MANAGER' : 'ROLE_EMPLOYEE');
-        const fullName = isPayal ? 'Payal Jadhao' : (isValidManager ? 'Jayshree Jadhao' : (isValidEmp3 ? 'Rahaa Malhotra' : 'Team Member'));
-        const teamTag = isPayal ? 'MANAGEMENT' : (isValidManager ? 'FRONTEND' : 'FRONTEND');
-
-        const allAdminPermissions = [
-          'ROLE_ADMIN', 'USER_CREATE', 'USER_EDIT', 'USER_DEACTIVATE', 'ROLE_MANAGE',
-          'PROJECT_CREATE', 'PROJECT_EDIT', 'TASK_CREATE', 'TASK_ASSIGN', 'TASK_EDIT',
-          'TASK_DELETE', 'TIME_TRACK', 'TIME_EDIT_MANUAL', 'CHECKLIST_MANAGE',
-          'DISCUSSION_POST', 'DISCUSSION_MENTION_ALL', 'DISCUSSION_MODERATE',
-          'API_DOC_PUBLISH', 'API_DOC_REVIEW', 'MEETING_SCHEDULE', 'MEETING_EDIT_NOTES',
-          'LEAD_VIEW_ALL', 'LEAD_MANAGE', 'DEAL_MANAGE', 'REPORT_VIEW', 'AUDIT_VIEW'
-        ];
-
-        const session = {
-          accessToken: 'teamcrm-jwt-' + btoa(normEmail) + '-' + Date.now(),
-          refreshToken: 'teamcrm-refresh-' + Date.now(),
-          tokenType: 'Bearer',
-          userId: isPayal ? 1 : 2,
-          email: normEmail,
-          fullName: fullName,
-          role: role,
-          roleName: role,
-          teamTag: teamTag,
-          isActive: true,
-          isFirstLogin: false,
-          permissions: isPayal ? allAdminPermissions : [role, 'TASK_CREATE', 'TASK_EDIT', 'TIME_TRACK', 'LEAD_MANAGE']
-        };
-
-        localStorage.setItem('teamcrm_token', session.accessToken);
-        localStorage.setItem('teamcrm_user', JSON.stringify(session));
-        window.location.href = '/';
-        return;
-      }
-
-      setError(err.response?.data?.message || 'Invalid email or password');
+      console.warn('Login error:', err);
+      setError(err.response?.data?.message || err.message || 'Invalid email or password');
     } finally {
       setLoading(false);
     }
@@ -106,43 +61,16 @@ export const LoginPage: React.FC = () => {
   const handleGoogleLogin = async (selectedEmail: string, fullName?: string) => {
     setGoogleLoading(true);
     setError('');
+    const cleanEmail = selectedEmail.trim().toLowerCase();
     try {
-      await loginWithGoogle(selectedEmail, fullName);
+      await loginWithGoogle(cleanEmail, fullName);
       setIsGoogleModalOpen(false);
       window.location.href = '/';
     } catch (err: any) {
-      console.warn('Backend call warning, providing seamless client authentication:', err);
-      const isPayal = selectedEmail.includes('payal') || selectedEmail.includes('jadhao');
-      const role = isPayal ? 'ROLE_ADMIN' : (selectedEmail.includes('jayshree') ? 'ROLE_MANAGER' : 'ROLE_EMPLOYEE');
-      const derivedName = fullName || (isPayal ? 'Payal Jadhao' : (selectedEmail.split('@')[0].charAt(0).toUpperCase() + selectedEmail.split('@')[0].slice(1)));
-
-      const allAdminPermissions = [
-        'ROLE_ADMIN', 'USER_CREATE', 'USER_EDIT', 'USER_DEACTIVATE', 'ROLE_MANAGE',
-        'PROJECT_CREATE', 'PROJECT_EDIT', 'TASK_CREATE', 'TASK_ASSIGN', 'TASK_EDIT',
-        'TASK_DELETE', 'TIME_TRACK', 'TIME_EDIT_MANUAL', 'CHECKLIST_MANAGE',
-        'DISCUSSION_POST', 'DISCUSSION_MENTION_ALL', 'DISCUSSION_MODERATE',
-        'API_DOC_PUBLISH', 'API_DOC_REVIEW', 'MEETING_SCHEDULE', 'MEETING_EDIT_NOTES',
-        'LEAD_VIEW_ALL', 'LEAD_MANAGE', 'DEAL_MANAGE', 'REPORT_VIEW', 'AUDIT_VIEW'
-      ];
-
-      const fallbackSession = {
-        accessToken: 'google-oauth-jwt-' + btoa(selectedEmail) + '-' + Date.now(),
-        refreshToken: 'google-refresh-' + Date.now(),
-        tokenType: 'Bearer',
-        userId: isPayal ? 1 : 2,
-        email: selectedEmail,
-        fullName: derivedName,
-        role: role,
-        roleName: role,
-        teamTag: isPayal ? 'MANAGEMENT' : 'GENERAL',
-        isActive: true,
-        isFirstLogin: false,
-        permissions: isPayal ? allAdminPermissions : [role]
-      };
-      localStorage.setItem('teamcrm_token', fallbackSession.accessToken);
-      localStorage.setItem('teamcrm_user', JSON.stringify(fallbackSession));
+      console.warn('Google login failed:', err);
+      const errMsg = err.response?.data?.message || err.message || 'You are not registered in TeamCRM. Please contact your administrator.';
+      setError(errMsg);
       setIsGoogleModalOpen(false);
-      window.location.href = '/';
     } finally {
       setGoogleLoading(false);
     }
@@ -204,8 +132,34 @@ export const LoginPage: React.FC = () => {
     }
   };
 
-  // Forgot Password: Step 2 - Verify OTP & Reset Password
-  const handleVerifyAndReset = async (e: React.FormEvent) => {
+  // Forgot Password: Step 2 - Verify OTP
+  const handleVerifyOtp = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setForgotError('');
+    setForgotSuccess('');
+
+    const trimmedEmail = forgotEmail.trim().toLowerCase();
+    const cleanOtp = forgotOtp.trim();
+
+    if (!cleanOtp || cleanOtp.length !== 6) {
+      setForgotError('Please enter the 6-digit OTP code sent to your email.');
+      return;
+    }
+
+    setForgotLoading(true);
+    try {
+      await authApi.verifyOtp(trimmedEmail, cleanOtp);
+      setForgotSuccess('OTP verified successfully! Now set your new password.');
+      setForgotStep(3);
+    } catch (err: any) {
+      setForgotError(err.response?.data?.message || err.message || 'Incorrect or expired OTP verification code. Please check your email.');
+    } finally {
+      setForgotLoading(false);
+    }
+  };
+
+  // Forgot Password: Step 3 - Set New Password
+  const handleSaveNewPassword = async (e: React.FormEvent) => {
     e.preventDefault();
     setForgotError('');
 
@@ -226,7 +180,6 @@ export const LoginPage: React.FC = () => {
       await authApi.verifyAndResetPassword({
         email: trimmedEmail,
         otp: forgotOtp.trim(),
-        oldPassword: forgotOldPass.trim() || undefined,
         newPassword: forgotNewPass.trim(),
       });
       setForgotSuccess('Password reset successfully! Redirecting to login...');
@@ -237,9 +190,12 @@ export const LoginPage: React.FC = () => {
         setPassword(forgotNewPass.trim());
         setForgotError('');
         setForgotSuccess('');
+        setForgotOtp('');
+        setForgotNewPass('');
+        setForgotConfirmPass('');
       }, 1500);
     } catch (err: any) {
-      setForgotError(err.response?.data?.message || 'Incorrect or expired OTP verification code. Please check your email.');
+      setForgotError(err.response?.data?.message || err.message || 'Failed to update password. Please try again.');
     } finally {
       setForgotLoading(false);
     }
@@ -468,7 +424,7 @@ export const LoginPage: React.FC = () => {
               </div>
             )}
 
-            {forgotStep === 1 ? (
+            {forgotStep === 1 && (
               <form onSubmit={handleSendOtp} className="space-y-4">
                 <div>
                   <label className="block text-xs font-semibold text-text-primary mb-1">
@@ -481,7 +437,7 @@ export const LoginPage: React.FC = () => {
                       required
                       value={forgotEmail}
                       onChange={(e) => setForgotEmail(e.target.value)}
-                      placeholder="e.g. rahaamalhotra@gmail.com"
+                      placeholder="e.g. payaldjadhao@gmail.com"
                       className="w-full pl-9 pr-4 py-2.5 bg-purple-50 text-sm text-text-primary rounded-lg border border-border-custom focus:border-primary outline-none"
                     />
                   </div>
@@ -494,29 +450,31 @@ export const LoginPage: React.FC = () => {
                   <button
                     type="button"
                     onClick={() => setIsForgotModalOpen(false)}
-                    className="px-4 py-2 text-xs font-semibold text-text-secondary hover:bg-gray-100 rounded-lg transition-colors"
+                    className="px-4 py-2 text-xs font-semibold text-text-secondary hover:bg-gray-100 rounded-lg transition-colors cursor-pointer"
                   >
                     Cancel
                   </button>
                   <button
                     type="submit"
                     disabled={forgotLoading}
-                    className="px-5 py-2 text-xs font-semibold bg-primary hover:bg-primary-hover text-white rounded-lg shadow-sm transition-all flex items-center gap-1.5 disabled:opacity-50"
+                    className="px-5 py-2 text-xs font-semibold bg-primary hover:bg-primary-hover text-white rounded-lg shadow-sm transition-all flex items-center gap-1.5 disabled:opacity-50 cursor-pointer"
                   >
                     {forgotLoading ? 'Verifying & Sending OTP...' : 'Send OTP Code'}
                   </button>
                 </div>
               </form>
-            ) : (
-              <form onSubmit={handleVerifyAndReset} className="space-y-3.5">
+            )}
+
+            {forgotStep === 2 && (
+              <form onSubmit={handleVerifyOtp} className="space-y-4">
                 <div className="p-3 bg-blue-50/80 border border-blue-200 rounded-xl text-blue-900 text-xs flex items-center gap-2.5">
                   <Mail className="w-4 h-4 text-blue-600 shrink-0" />
-                  <span>A 6-digit verification code has been sent to <strong>{forgotEmail}</strong>. Please check your email inbox.</span>
+                  <span>A 6-digit verification code has been dispatched to <strong>{forgotEmail}</strong>. Please check your email inbox.</span>
                 </div>
 
                 <div>
                   <label className="block text-xs font-semibold text-text-primary mb-1">
-                    6-Digit Verification OTP
+                    6-Digit Verification OTP Code
                   </label>
                   <input
                     type="text"
@@ -524,9 +482,42 @@ export const LoginPage: React.FC = () => {
                     maxLength={6}
                     value={forgotOtp}
                     onChange={(e) => setForgotOtp(e.target.value)}
-                    placeholder="Enter 6-digit OTP code"
-                    className="w-full px-3 py-2 bg-purple-50 text-sm font-mono tracking-widest text-text-primary rounded-lg border border-border-custom focus:border-primary outline-none text-center"
+                    placeholder="Enter 6-digit OTP"
+                    className="w-full px-3 py-2.5 bg-purple-50 text-base font-mono tracking-widest text-text-primary rounded-lg border border-border-custom focus:border-primary outline-none text-center font-bold"
                   />
+                  <p className="text-[11px] text-text-secondary mt-1">
+                    Enter the 6-digit code received on your email to proceed to password setup.
+                  </p>
+                </div>
+
+                <div className="flex justify-between items-center pt-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setForgotStep(1);
+                      setForgotError('');
+                      setForgotSuccess('');
+                    }}
+                    className="text-xs text-primary hover:underline cursor-pointer"
+                  >
+                    ← Back to Email
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={forgotLoading || forgotOtp.trim().length !== 6}
+                    className="px-5 py-2 text-xs font-semibold bg-primary hover:bg-primary-hover text-white rounded-lg shadow-sm transition-all disabled:opacity-50 cursor-pointer"
+                  >
+                    {forgotLoading ? 'Verifying OTP...' : 'Verify OTP Code'}
+                  </button>
+                </div>
+              </form>
+            )}
+
+            {forgotStep === 3 && (
+              <form onSubmit={handleSaveNewPassword} className="space-y-3.5">
+                <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl text-emerald-900 text-xs flex items-center gap-2.5">
+                  <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                  <span>OTP verified for <strong>{forgotEmail}</strong>. Please set your new password below.</span>
                 </div>
 
                 <div>
@@ -560,15 +551,19 @@ export const LoginPage: React.FC = () => {
                 <div className="flex justify-between items-center pt-2">
                   <button
                     type="button"
-                    onClick={() => setForgotStep(1)}
-                    className="text-xs text-primary hover:underline"
+                    onClick={() => {
+                      setForgotStep(2);
+                      setForgotError('');
+                      setForgotSuccess('');
+                    }}
+                    className="text-xs text-primary hover:underline cursor-pointer"
                   >
-                    ← Back to Email
+                    ← Back to OTP
                   </button>
                   <button
                     type="submit"
                     disabled={forgotLoading}
-                    className="px-5 py-2 text-xs font-semibold bg-primary hover:bg-primary-hover text-white rounded-lg shadow-sm transition-all disabled:opacity-50"
+                    className="px-5 py-2 text-xs font-semibold bg-primary hover:bg-primary-hover text-white rounded-lg shadow-sm transition-all disabled:opacity-50 cursor-pointer"
                   >
                     {forgotLoading ? 'Updating Password...' : 'Reset & Save Password'}
                   </button>
@@ -579,7 +574,7 @@ export const LoginPage: React.FC = () => {
         </div>
       )}
 
-      {/* Google OAuth Account Chooser Modal (matching Claude AI Google Account Chooser) */}
+      {/* Google OAuth Account Chooser Modal */}
       {isGoogleModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-xs p-4 animate-in fade-in duration-150">
           <div className="bg-white rounded-3xl shadow-2xl border border-gray-200 max-w-[420px] w-full p-7 animate-in zoom-in-95 duration-200 relative overflow-hidden">
@@ -641,23 +636,7 @@ export const LoginPage: React.FC = () => {
             {/* Account List or Custom Input */}
             {!showCustomGoogleInput ? (
               <div className="border-t border-gray-200">
-                {/* Account 1 */}
-                <button
-                  type="button"
-                  disabled={googleLoading}
-                  onClick={() => handleGoogleLogin('payaljadhao2709@gmail.com', 'Payal Jadhao')}
-                  className="w-full text-left flex items-center gap-3.5 py-3.5 px-2 hover:bg-gray-50/80 transition-colors border-b border-gray-200 cursor-pointer disabled:opacity-50"
-                >
-                  <div className="w-8 h-8 rounded-full bg-[#1e8e3e] text-white flex items-center justify-center font-medium text-sm shrink-0">
-                    P
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium text-[#202124] truncate">Payal Jadhao</p>
-                    <p className="text-xs text-[#5f6368] truncate">payaljadhao2709@gmail.com</p>
-                  </div>
-                </button>
-
-                {/* Account 2 */}
+                {/* Single Admin Account */}
                 <button
                   type="button"
                   disabled={googleLoading}
@@ -668,24 +647,8 @@ export const LoginPage: React.FC = () => {
                     P
                   </div>
                   <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium text-[#202124] truncate">Payal Jadhao</p>
+                    <p className="text-sm font-medium text-[#202124] truncate">Payal Jadhao (Admin)</p>
                     <p className="text-xs text-[#5f6368] truncate">payaldjadhao@gmail.com</p>
-                  </div>
-                </button>
-
-                {/* Account 3 */}
-                <button
-                  type="button"
-                  disabled={googleLoading}
-                  onClick={() => handleGoogleLogin('payaldj2709@gmail.com', 'Payal Jadhao')}
-                  className="w-full text-left flex items-center gap-3.5 py-3.5 px-2 hover:bg-gray-50/80 transition-colors border-b border-gray-200 cursor-pointer disabled:opacity-50"
-                >
-                  <div className="w-8 h-8 rounded-full bg-[#1a73e8] text-white flex items-center justify-center font-medium text-sm shrink-0">
-                    P
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium text-[#202124] truncate">Payal Jadhao</p>
-                    <p className="text-xs text-[#5f6368] truncate">payaldj2709@gmail.com</p>
                   </div>
                 </button>
 

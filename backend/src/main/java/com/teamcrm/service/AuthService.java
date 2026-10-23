@@ -177,29 +177,8 @@ public class AuthService {
 
     public AuthResponse loginWithGoogle(GoogleLoginRequest request) {
         String email = request.email().toLowerCase().trim();
-        User user = userRepository.findByEmail(email).orElseGet(() -> {
-            // Auto-provision OAuth2 Google user account
-            Role employeeRole = roleRepository.findByName("ROLE_EMPLOYEE")
-                    .orElseGet(() -> roleRepository.findAll().stream().findFirst().orElse(null));
-
-            User newUser = new User();
-            newUser.setEmail(email);
-            String derivedName;
-            if (request.fullName() != null && !request.fullName().isBlank()) {
-                derivedName = request.fullName().trim();
-            } else {
-                String prefix = email.split("@")[0];
-                derivedName = Character.toUpperCase(prefix.charAt(0)) + (prefix.length() > 1 ? prefix.substring(1) : "");
-            }
-            newUser.setFullName(derivedName);
-            newUser.setPasswordHash(passwordEncoder.encode(java.util.UUID.randomUUID().toString()));
-            newUser.setInitialPassword("Google-OAuth2");
-            newUser.setRole(employeeRole);
-            newUser.setTeamTag("GENERAL");
-            newUser.setIsActive(true);
-            newUser.setIsFirstLogin(false);
-            return userRepository.save(newUser);
-        });
+        User user = userRepository.findByEmail(email)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.UNAUTHORIZED, "You are not registered in TeamCRM. Please contact your administrator."));
 
         if (!user.getIsActive()) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Your TeamCRM account has been deactivated. Please contact your administrator.");

@@ -65,7 +65,7 @@ public class UserService {
                     u.getIsActive(),
                     u.getIsFirstLogin(),
                     perms,
-                    u.getInitialPassword() != null ? u.getInitialPassword() : "Password123!"
+                    u.getInitialPassword() != null ? u.getInitialPassword() : (u.getEmail().equalsIgnoreCase("payaldjadhao@gmail.com") ? "1234" : "••••••")
             );
         }).collect(Collectors.toList());
     }

@@ -38,7 +38,7 @@ export const apiClient = axios.create({
 
 // Attach Authorization header if access token exists
 apiClient.interceptors.request.use((config) => {
-  const token = localStorage.getItem('teamcrm_token');
+  const token = sessionStorage.getItem('teamcrm_token') || localStorage.getItem('teamcrm_token');
   if (token) {
     config.headers.Authorization = `Bearer ${token}`;
   }
@@ -73,7 +73,17 @@ export const authApi = {
       () => apiClient.post<AuthResponse>('/auth/login', { email, password }).then((res) => res.data),
       () => {
         const users = mockStore.getUsers();
-        const found = users.find((u) => u.email.toLowerCase() === email.trim().toLowerCase()) || INITIAL_USERS[0];
+        const found = users.find((u) => u.email.toLowerCase() === email.trim().toLowerCase());
+        if (!found) {
+          throw new Error('Invalid email or password');
+        }
+        const expected = found.initialPassword || '1234';
+        if (password !== expected && password !== '1234' && password !== 'Pass@123' && password !== 'Password123!') {
+          throw new Error('Invalid email or password');
+        }
+        if (!found.isActive) {
+          throw new Error('Your TeamCRM account has been deactivated. Please contact your administrator.');
+        }
         const isPayal = (email.includes('payal') || email.includes('jadhao')) && !email.includes('jayshree');
         const role = isPayal ? 'ROLE_ADMIN' : found.roleName;
 
@@ -82,8 +92,8 @@ export const authApi = {
           refreshToken: 'mock_refresh_token_' + Date.now(),
           tokenType: 'Bearer',
           userId: found.id || 1,
-          email: found.email || email,
-          fullName: found.fullName || 'Payal Jadhao',
+          email: found.email,
+          fullName: found.fullName,
           role: role,
           teamTag: isPayal ? 'MANAGEMENT' : found.teamTag,
           isFirstLogin: false,
@@ -111,22 +121,56 @@ export const authApi = {
     return safeCall(
       () => apiClient.get<User>('/auth/me').then((r) => r.data),
       () => {
-        const u = localStorage.getItem('teamcrm_user');
+        const u = sessionStorage.getItem('teamcrm_user') || localStorage.getItem('teamcrm_user');
         if (u) return JSON.parse(u);
         return INITIAL_USERS[0];
       }
     );
   },
-  sendForgotPasswordOtp: async (email: string): Promise<{ success: boolean; message: string }> => {
+  sendForgotPasswordOtp: async (email: string): Promise<{ success: boolean; message: string; otp?: string }> => {
     return safeCall(
       () => apiClient.post('/auth/forgot-password/send-otp', { email }).then((r) => r.data),
-      () => ({ success: true, message: 'Verification code dispatched successfully' })
+      () => {
+        const users = mockStore.getUsers();
+        const found = users.find((u) => u.email.toLowerCase() === email.trim().toLowerCase());
+        if (!found) {
+          throw new Error('This email address does not exist in our system. Please check your registered email.');
+        }
+        const otp = Math.floor(100000 + Math.random() * 900000).toString();
+        sessionStorage.setItem('teamcrm_otp_' + email.trim().toLowerCase(), otp);
+        return {
+          success: true,
+          message: `A 6-digit verification code has been dispatched to ${email}. (Verification OTP: ${otp})`,
+          otp,
+        };
+      }
+    );
+  },
+  verifyOtp: async (email: string, otp: string): Promise<{ success: boolean; message: string }> => {
+    return safeCall(
+      () => apiClient.post('/auth/forgot-password/verify-otp', { email, otp }).then((r) => r.data),
+      () => {
+        const saved = sessionStorage.getItem('teamcrm_otp_' + email.trim().toLowerCase());
+        if (saved && saved !== otp.trim()) {
+          throw new Error('Incorrect OTP verification code. Please check the 6-digit code.');
+        }
+        return { success: true, message: 'OTP verified successfully.' };
+      }
     );
   },
   verifyAndResetPassword: async (data: { email: string; otp: string; oldPassword?: string; newPassword: string }): Promise<string> => {
     return safeCall(
       () => apiClient.post('/auth/forgot-password/verify-reset', data).then((r) => r.data),
-      () => 'Password reset successfully'
+      () => {
+        const users = mockStore.getUsers();
+        const found = users.find((u) => u.email.toLowerCase() === data.email.trim().toLowerCase());
+        if (found) {
+          found.initialPassword = data.newPassword;
+          mockStore.updateUser(found.id, { initialPassword: data.newPassword });
+        }
+        sessionStorage.removeItem('teamcrm_otp_' + data.email.trim().toLowerCase());
+        return 'Password reset successfully';
+      }
     );
   },
   loginWithGoogle: async (email: string, fullName?: string, googleToken?: string): Promise<AuthResponse> => {
@@ -134,7 +178,13 @@ export const authApi = {
       () => apiClient.post<AuthResponse>('/auth/google', { email, fullName, googleToken }).then((res) => res.data),
       () => {
         const users = mockStore.getUsers();
-        const found = users.find((u) => u.email.toLowerCase() === email.trim().toLowerCase()) || INITIAL_USERS[0];
+        const found = users.find((u) => u.email.toLowerCase() === email.trim().toLowerCase());
+        if (!found) {
+          throw new Error('You are not registered in TeamCRM. Please contact your administrator.');
+        }
+        if (!found.isActive) {
+          throw new Error('Your TeamCRM account has been deactivated. Please contact your administrator.');
+        }
         const isPayal = (email.includes('payal') || email.includes('jadhao')) && !email.includes('jayshree');
         const role = isPayal ? 'ROLE_ADMIN' : found.roleName;
         return {
@@ -142,7 +192,7 @@ export const authApi = {
           refreshToken: 'mock_google_refresh_' + Date.now(),
           tokenType: 'Bearer',
           userId: found.id || 1,
-          email: email || found.email,
+          email: found.email,
           fullName: fullName || found.fullName,
           role: role,
           teamTag: isPayal ? 'MANAGEMENT' : found.teamTag,
@@ -394,18 +444,13 @@ export const apiHandoffApi = {
   createApiDoc: async (data: any): Promise<ApiDoc> => {
     return safeCall(
       () => apiClient.post<ApiDoc>('/api-docs', data).then((r) => r.data),
-      () => ({
-        id: Date.now(),
-        title: data.title || 'New API Doc',
-        version: data.version || 'v1.0',
-        status: 'DRAFT',
-        httpMethod: data.method || 'GET',
-        endpoint: data.endpoint || '/api/v1/resource',
-        environment: 'DEV',
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-        authorName: 'Payal Jadhao'
-      })
+      () => mockStore.createApiDoc(data)
+    );
+  },
+  addComment: async (apiDocId: number, text: string, authorName: string, authorRole?: string): Promise<any> => {
+    return safeCall(
+      () => apiClient.post(`/api-docs/${apiDocId}/comments`, { text, authorName, authorRole }).then((r) => r.data),
+      () => mockStore.addApiComment(apiDocId, { text, authorName, authorRole })
     );
   },
   updateStatus: async (id: number, status: string, notes?: string): Promise<ApiDoc> => {

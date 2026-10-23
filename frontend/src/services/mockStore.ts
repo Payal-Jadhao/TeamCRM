@@ -23,6 +23,7 @@ export const INITIAL_USERS: User[] = [
     fullName: 'Payal Jadhao',
     roleName: 'ROLE_ADMIN',
     teamTag: 'MANAGEMENT',
+    initialPassword: '1234',
     isActive: true,
     isFirstLogin: false,
     permissions: [
@@ -33,43 +34,6 @@ export const INITIAL_USERS: User[] = [
       'API_DOC_PUBLISH', 'API_DOC_REVIEW', 'MEETING_SCHEDULE', 'MEETING_EDIT_NOTES',
       'LEAD_VIEW_ALL', 'LEAD_MANAGE', 'DEAL_MANAGE', 'REPORT_VIEW', 'AUDIT_VIEW'
     ]
-  },
-  {
-    id: 2,
-    email: 'payaldj2709@gmail.com',
-    fullName: 'Payal Jadhao',
-    roleName: 'ROLE_ADMIN',
-    teamTag: 'MANAGEMENT',
-    isActive: true,
-    isFirstLogin: false,
-    permissions: [
-      'ROLE_ADMIN', 'USER_CREATE', 'USER_EDIT', 'USER_DEACTIVATE', 'ROLE_MANAGE',
-      'PROJECT_CREATE', 'PROJECT_EDIT', 'TASK_CREATE', 'TASK_ASSIGN', 'TASK_EDIT',
-      'TASK_DELETE', 'TIME_TRACK', 'TIME_EDIT_MANUAL', 'CHECKLIST_MANAGE',
-      'DISCUSSION_POST', 'DISCUSSION_MENTION_ALL', 'DISCUSSION_MODERATE',
-      'API_DOC_PUBLISH', 'API_DOC_REVIEW', 'MEETING_SCHEDULE', 'MEETING_EDIT_NOTES',
-      'LEAD_VIEW_ALL', 'LEAD_MANAGE', 'DEAL_MANAGE', 'REPORT_VIEW', 'AUDIT_VIEW'
-    ]
-  },
-  {
-    id: 3,
-    email: 'jayshreejadhao0206@gmail.com',
-    fullName: 'Jayshree Jadhao',
-    roleName: 'ROLE_MANAGER',
-    teamTag: 'FRONTEND',
-    isActive: true,
-    isFirstLogin: false,
-    permissions: ['ROLE_MANAGER', 'TASK_CREATE', 'TASK_ASSIGN', 'TASK_EDIT', 'TIME_TRACK', 'REPORT_VIEW', 'MEETING_SCHEDULE']
-  },
-  {
-    id: 4,
-    email: 'rahaamalhotra@gmail.com',
-    fullName: 'Rahaa Malhotra',
-    roleName: 'ROLE_EMPLOYEE',
-    teamTag: 'FRONTEND',
-    isActive: true,
-    isFirstLogin: false,
-    permissions: ['ROLE_EMPLOYEE', 'TASK_CREATE', 'TASK_EDIT', 'TIME_TRACK']
   }
 ];
 
@@ -306,6 +270,7 @@ export const mockStore = {
       phone: data.phone || '',
       isActive: true,
       isFirstLogin: true,
+      initialPassword: data.tempPassword || 'Pass@123',
       permissions: data.extraPermissions || [data.roleName, 'TASK_CREATE', 'TASK_EDIT', 'TIME_TRACK']
     };
     (newUser as any).role = data.roleName;
@@ -318,6 +283,9 @@ export const mockStore = {
     const users = mockStore.getUsers();
     const idx = users.findIndex((u) => u.id === id);
     if (idx !== -1) {
+      if (data.password) {
+        data.initialPassword = data.password;
+      }
       users[idx] = { ...users[idx], ...data };
       setStored('teamcrm_store_users', users);
       return users[idx];
@@ -563,6 +531,53 @@ export const mockStore = {
         updatedAt: new Date().toISOString()
       }
     ]);
+  },
+
+  createApiDoc: (doc: any): ApiDoc => {
+    const docs = mockStore.getApiDocs();
+    const newDoc: any = {
+      id: Date.now(),
+      title: doc.title || 'New API Spec',
+      httpMethod: doc.httpMethod || 'POST',
+      endpoint: doc.endpoint || '/api/v1/',
+      status: doc.status || 'READY_FOR_INTEGRATION',
+      version: doc.version || 'v1.0.0',
+      environment: doc.environment || 'DEV',
+      authRequired: doc.authRequired || 'Bearer JWT',
+      taskId: doc.taskId,
+      requestBodyJson: doc.requestBodyJson,
+      responseBodyJson: doc.responseBodyJson,
+      taggedUserIds: doc.taggedUserIds || [],
+      taggedUserNames: doc.taggedUserNames || [],
+      taggedUserEmails: doc.taggedUserEmails || [],
+      comments: [],
+      createdById: doc.createdById || 1,
+      createdByName: doc.createdByName || 'Payal Jadhao',
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+    docs.unshift(newDoc);
+    setStored('teamcrm_store_api_docs', docs);
+    return newDoc;
+  },
+
+  addApiComment: (apiDocId: number, comment: any): any => {
+    const docs = mockStore.getApiDocs();
+    const doc: any = docs.find((d: any) => d.id === apiDocId);
+    if (doc) {
+      if (!doc.comments) doc.comments = [];
+      const newComment = {
+        id: Date.now(),
+        authorName: comment.authorName || 'Team Member',
+        authorRole: comment.authorRole || 'EMPLOYEE',
+        text: comment.text,
+        createdAt: new Date().toISOString(),
+      };
+      doc.comments.push(newComment);
+      setStored('teamcrm_store_api_docs', docs);
+      return newComment;
+    }
+    return null;
   },
 
   getMeetings: (): Meeting[] => {

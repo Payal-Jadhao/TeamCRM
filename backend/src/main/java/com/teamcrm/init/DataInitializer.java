@@ -146,67 +146,18 @@ public class DataInitializer implements CommandLineRunner {
             teamRepository.save(new Team("Product Design", "DESIGN", "Design systems & UX wireframes"));
         }
 
-        // 4. Exact 3 Fresh Real Users:
-        // Admin: payaldjadhao@gmail.com / Pass@123
+        // 4. Single Initial Admin Account:
+        // payaldjadhao@gmail.com / 1234
         User admin = userRepository.findByEmail("payaldjadhao@gmail.com").orElseGet(User::new);
         admin.setEmail("payaldjadhao@gmail.com");
-        admin.setPasswordHash(passwordEncoder.encode("Pass@123"));
-        admin.setInitialPassword("Pass@123");
+        admin.setPasswordHash(passwordEncoder.encode("1234"));
+        admin.setInitialPassword("1234");
         admin.setFullName("Payal Jadhao");
         admin.setRole(adminRole);
         admin.setTeamTag("MANAGEMENT");
         admin.setIsActive(true);
         admin.setIsFirstLogin(false);
         admin = userRepository.save(admin);
-
-        // Manager: jayshreejadhao0206@gmail.com / Pass@123321
-        User manager = userRepository.findByEmail("jayshreejadhao0206@gmail.com").orElseGet(User::new);
-        manager.setEmail("jayshreejadhao0206@gmail.com");
-        manager.setPasswordHash(passwordEncoder.encode("Pass@123321"));
-        manager.setInitialPassword("Pass@123321");
-        manager.setFullName("Jayshree Jadhao");
-        manager.setRole(managerRole);
-        manager.setTeamTag("FRONTEND");
-        manager.setIsActive(true);
-        manager.setIsFirstLogin(false);
-        manager = userRepository.save(manager);
-
-        // Employee: rahaamalhotra@gmail.com / Pass#123
-        User employee = userRepository.findByEmail("rahaamalhotra@gmail.com").orElseGet(User::new);
-        employee.setEmail("rahaamalhotra@gmail.com");
-        employee.setPasswordHash(passwordEncoder.encode("Pass#123"));
-        employee.setInitialPassword("Pass#123");
-        employee.setFullName("Rahaa Malhotra");
-        employee.setRole(employeeRole);
-        employee.setTeamTag("FRONTEND");
-        employee.setIsActive(true);
-        employee.setIsFirstLogin(false);
-        employee = userRepository.save(employee);
-
-        // Ensure user's personal/Google accounts exist in system with ROLE_ADMIN and Pass@123
-        User payalDj = userRepository.findByEmail("payaldj2709@gmail.com").orElseGet(User::new);
-        payalDj.setEmail("payaldj2709@gmail.com");
-        payalDj.setPasswordHash(passwordEncoder.encode("Pass@123"));
-        payalDj.setInitialPassword("Pass@123");
-        payalDj.setFullName("Payal Jadhao");
-        payalDj.setRole(adminRole);
-        payalDj.setTeamTag("MANAGEMENT");
-        payalDj.setIsActive(true);
-        payalDj.setIsFirstLogin(false);
-        userRepository.save(payalDj);
-
-        User payal2709 = userRepository.findByEmail("payaljadhao2709@gmail.com").orElseGet(User::new);
-        payal2709.setEmail("payaljadhao2709@gmail.com");
-        payal2709.setPasswordHash(passwordEncoder.encode("Pass@123"));
-        payal2709.setInitialPassword("Pass@123");
-        payal2709.setFullName("Payal Jadhao");
-        payal2709.setRole(adminRole);
-        payal2709.setTeamTag("MANAGEMENT");
-        payal2709.setIsActive(true);
-        payal2709.setIsFirstLogin(false);
-        userRepository.save(payal2709);
-
-
 
         // 5. Project & Initial Data
         if (projectRepository.count() == 0) {
@@ -215,7 +166,7 @@ public class DataInitializer implements CommandLineRunner {
             project.setKeyCode("CRM");
             project.setDescription("Integrated CRM, Jira-lite tasks, server-side time tracking and API handoff.");
             project.setStatus("ACTIVE");
-            project.setOwner(manager);
+            project.setOwner(admin);
             project = projectRepository.save(project);
 
             // 6. CRM Leads & Customers & Deals

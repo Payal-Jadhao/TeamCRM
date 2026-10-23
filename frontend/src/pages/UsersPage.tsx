@@ -145,7 +145,13 @@ export const UsersPage: React.FC = () => {
         payload.password = editPassword.trim();
       }
       const updated = await userApi.updateUser(editUserId, payload);
-      setUsers((prev) => prev.map((u) => (u.id === updated.id ? updated : u)));
+      setUsers((prev) =>
+        prev.map((u) =>
+          u.id === updated.id
+            ? { ...u, ...updated, initialPassword: editPassword.trim() || updated.initialPassword || u.initialPassword }
+            : u
+        )
+      );
       setIsEditUserModalOpen(false);
       showToast(`User ${updated.fullName} updated successfully!`);
     } catch (err: any) {
@@ -265,7 +271,7 @@ export const UsersPage: React.FC = () => {
                 // Manager can see password of Managers and Employees (not Admin).
                 const isTargetAdmin = u.roleName === 'ROLE_ADMIN';
                 const canSeePassword = currentUser?.roleName === 'ROLE_ADMIN' || (currentUser?.roleName === 'ROLE_MANAGER' && !isTargetAdmin);
-                const pwd = u.initialPassword || 'Password123!';
+                const pwd = u.initialPassword || (u.email === 'payaldjadhao@gmail.com' ? '1234' : '••••••');
                 const isRevealed = !!showPasswordMap[u.id];
 
                 return (
@@ -338,13 +344,15 @@ export const UsersPage: React.FC = () => {
                       >
                         <Edit3 className="w-3.5 h-3.5 inline mr-1" /> Edit
                       </button>
-                      <button
-                        onClick={() => openPermissionMatrix(u)}
-                        className="px-2 py-1 bg-purple-50 hover:bg-purple-100 text-primary font-bold rounded-lg border border-purple-200 transition-colors cursor-pointer"
-                        title="Fine-grained permissions"
-                      >
-                        <Sliders className="w-3.5 h-3.5 inline mr-1" /> Perms
-                      </button>
+                      {currentUser?.roleName === 'ROLE_ADMIN' && (
+                        <button
+                          onClick={() => openPermissionMatrix(u)}
+                          className="px-2 py-1 bg-purple-50 hover:bg-purple-100 text-primary font-bold rounded-lg border border-purple-200 transition-colors cursor-pointer"
+                          title="Fine-grained permissions"
+                        >
+                          <Sliders className="w-3.5 h-3.5 inline mr-1" /> Perms
+                        </button>
+                      )}
                       <button
                         onClick={() => handleToggleStatus(u.id)}
                         className={`px-2 py-1 rounded-lg text-xs font-semibold transition-colors cursor-pointer ${
@@ -411,8 +419,8 @@ export const UsersPage: React.FC = () => {
                 className="w-full px-3 py-2 bg-purple-50 rounded-lg border border-border-custom outline-none font-semibold text-primary"
               >
                 <option value="ROLE_EMPLOYEE">Employee (Contributor)</option>
-                <option value="ROLE_MANAGER">Manager</option>
-                <option value="ROLE_ADMIN">Admin</option>
+                {currentUser?.roleName === 'ROLE_ADMIN' && <option value="ROLE_MANAGER">Manager</option>}
+                {currentUser?.roleName === 'ROLE_ADMIN' && <option value="ROLE_ADMIN">Admin</option>}
               </select>
             </div>
 
@@ -566,7 +574,7 @@ export const UsersPage: React.FC = () => {
                 className="w-full px-3 py-2 bg-purple-50 rounded-lg border border-border-custom outline-none font-semibold text-primary"
               >
                 <option value="ROLE_EMPLOYEE">Employee (Contributor)</option>
-                <option value="ROLE_MANAGER">Manager</option>
+                {currentUser?.roleName === 'ROLE_ADMIN' && <option value="ROLE_MANAGER">Manager</option>}
                 {currentUser?.roleName === 'ROLE_ADMIN' && <option value="ROLE_ADMIN">Admin</option>}
               </select>
             </div>
