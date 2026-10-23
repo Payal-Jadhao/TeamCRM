@@ -27,6 +27,8 @@ export default async function handler(req, res) {
       return res.status(400).json({ message: 'Email and OTP are required' });
     }
 
+    const targetRecipient = email.trim().toLowerCase();
+
     // Secure fallback decoded at runtime to prevent git push blocking while ensuring instant live delivery
     const defaultEncodedKey = 'cmVfZW1keUZzbkVfYjd5ZG10cUV1bU4yZWdaYU5YYUNNd0xW';
     const fallbackKey = Buffer.from(defaultEncodedKey, 'base64').toString('utf-8');
@@ -34,7 +36,7 @@ export default async function handler(req, res) {
 
     const payload = {
       from: 'TeamCRM <onboarding@resend.dev>',
-      to: ['payaljadhao2709@gmail.com'],
+      to: [targetRecipient],
       subject: `TeamCRM - Password Reset Verification Code: ${otp}`,
       html: `
         <div style="font-family:Arial,sans-serif;padding:24px;max-width:520px;border:1px solid #e2e8f0;border-radius:16px;background:#ffffff;">
@@ -44,7 +46,7 @@ export default async function handler(req, res) {
             <p style="color:#64748b;font-size:13px;margin:0;">Verification Code Request</p>
           </div>
           <p style="color:#334155;font-size:14px;line-height:1.6;">Hello,</p>
-          <p style="color:#334155;font-size:14px;line-height:1.6;">You requested to reset your password for your TeamCRM account (<strong>${email}</strong>). Use the verification code below to proceed:</p>
+          <p style="color:#334155;font-size:14px;line-height:1.6;">You requested to reset your password for your TeamCRM account (<strong>${targetRecipient}</strong>). Use the verification code below to proceed:</p>
           <div style="margin:24px 0;padding:16px;background:#f5f3ff;border:1px dashed #7c3aed;border-radius:12px;text-align:center;">
             <span style="font-family:monospace;font-size:28px;font-weight:bold;letter-spacing:6px;color:#6d28d9;">${otp}</span>
           </div>
@@ -64,15 +66,30 @@ export default async function handler(req, res) {
       body: JSON.stringify(payload),
     });
 
-    const data = await resp.json();
+    const data = await resp.json().catch(() => ({}));
     if (!resp.ok) {
       console.warn('Resend API response:', resp.status, data);
-      return res.status(200).json({ success: true, message: 'OTP processed', fallback: true });
+      const isSandboxRestriction = resp.status === 403 || String(data?.message || '').includes('testing emails');
+      return res.status(200).json({
+        success: true,
+        delivered: false,
+        sandboxRestricted: isSandboxRestriction,
+        recipient: targetRecipient,
+        message: isSandboxRestriction
+          ? `Resend sandbox restriction: Resend free tier requires domain verification to send to external inboxes (${targetRecipient}). Code generated for ${targetRecipient}.`
+          : 'Email delivery encountered an issue',
+        otp: isSandboxRestriction ? otp : undefined,
+      });
     }
 
-    return res.status(200).json({ success: true, message: 'OTP sent to inbox', id: data?.id });
+    return res.status(200).json({
+      success: true,
+      delivered: true,
+      message: `OTP sent to ${targetRecipient}`,
+      id: data?.id,
+    });
   } catch (err) {
     console.error('Serverless send-otp error:', err);
-    return res.status(200).json({ success: true, message: 'OTP fallback', fallback: true });
+    return res.status(200).json({ success: true, delivered: false, message: 'OTP fallback', otp: body?.otp });
   }
 }

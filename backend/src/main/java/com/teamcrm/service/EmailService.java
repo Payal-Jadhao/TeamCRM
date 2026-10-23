@@ -127,10 +127,6 @@ public class EmailService {
             if (response.statusCode() >= 200 && response.statusCode() < 300) {
                 log.info("Successfully dispatched OTP email via Resend API to: {}", toEmail);
                 return true;
-            } else if (response.statusCode() == 403 && !toEmail.equalsIgnoreCase("payaljadhao2709@gmail.com")) {
-                // In Resend free sandbox, onboarding@resend.dev sends to the registered account email
-                log.info("Target recipient {} is outside sandbox. Forwarding to verified account inbox payaljadhao2709@gmail.com", toEmail);
-                return sendViaResend("payaljadhao2709@gmail.com", otp);
             } else {
                 log.warn("Resend API returned status {}: {}", response.statusCode(), response.body());
                 return false;

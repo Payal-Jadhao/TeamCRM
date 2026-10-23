@@ -171,14 +171,15 @@ export const authApi = {
         sessionStorage.setItem('teamcrm_otp_' + clean, otp);
 
         let emailDispatched = false;
+        let responseJson: any = null;
         try {
           const resp = await fetch('/api/send-otp', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ email: targetEmail, otp }),
           });
-          const json = await resp.json().catch(() => null);
-          if (resp.ok && json?.success) {
+          responseJson = await resp.json().catch(() => null);
+          if (resp.ok && responseJson?.delivered) {
             emailDispatched = true;
           }
         } catch (e) {
@@ -188,8 +189,8 @@ export const authApi = {
         return {
           success: true,
           message: emailDispatched
-            ? `A 6-digit verification code has been dispatched to your registered email (${targetEmail}). Please check your inbox.`
-            : `A 6-digit verification code has been dispatched to your registered email. (Code: ${otp})`,
+            ? `A 6-digit verification code has been dispatched to ${targetEmail}. Please check your inbox.`
+            : `A 6-digit verification code has been generated for ${targetEmail}. (Code: ${otp})`,
           otp: emailDispatched ? undefined : otp,
         };
       },
