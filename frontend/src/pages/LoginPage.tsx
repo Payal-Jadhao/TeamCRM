@@ -660,21 +660,30 @@ export const LoginPage: React.FC = () => {
             {/* Account List or Custom Input */}
             {!showCustomGoogleInput ? (
               <div className="border-t border-gray-200">
-                {/* Single Admin Account */}
-                <button
-                  type="button"
-                  disabled={googleLoading}
-                  onClick={() => handleGoogleLogin('payaldjadhao@gmail.com', 'Payal Jadhao')}
-                  className="w-full text-left flex items-center gap-3.5 py-3.5 px-2 hover:bg-gray-50/80 transition-colors border-b border-gray-200 cursor-pointer disabled:opacity-50"
-                >
-                  <div className="w-8 h-8 rounded-full bg-[#8e24aa] text-white flex items-center justify-center font-medium text-sm shrink-0">
-                    P
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium text-[#202124] truncate">Payal Jadhao (Admin)</p>
-                    <p className="text-xs text-[#5f6368] truncate">payaldjadhao@gmail.com</p>
-                  </div>
-                </button>
+                {[
+                  { name: 'Payal Jadhao', email: 'payaljadhao2709@gmail.com', avatarColor: '#2e7d32' },
+                  { name: 'Payal Jadhao', email: 'payaldjadhao@gmail.com', avatarColor: '#8e24aa' },
+                  { name: 'Payal Jadhao', email: 'payaldj2709@gmail.com', avatarColor: '#3f51b5' },
+                ].map((acc) => (
+                  <button
+                    key={acc.email}
+                    type="button"
+                    disabled={googleLoading}
+                    onClick={() => handleGoogleLogin(acc.email, acc.name)}
+                    className="w-full text-left flex items-center gap-3.5 py-3.5 px-2 hover:bg-gray-50/80 transition-colors border-b border-gray-200 cursor-pointer disabled:opacity-50"
+                  >
+                    <div
+                      className="w-8 h-8 rounded-full text-white flex items-center justify-center font-medium text-sm shrink-0"
+                      style={{ backgroundColor: acc.avatarColor }}
+                    >
+                      {acc.name.charAt(0).toUpperCase()}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium text-[#202124] truncate">{acc.name}</p>
+                      <p className="text-xs text-[#5f6368] truncate">{acc.email}</p>
+                    </div>
+                  </button>
+                ))}
 
                 {/* Use Another Account */}
                 <button
