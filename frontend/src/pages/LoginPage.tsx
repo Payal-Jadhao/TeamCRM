@@ -3,6 +3,8 @@ import { useAuth } from '../context/AuthContext';
 import { authApi } from '../services/api';
 import { Lock, Mail, ArrowRight, ShieldCheck, Key, X, CheckCircle2, AlertTriangle, User } from 'lucide-react';
 
+import { googleAuthService, GoogleAccountItem } from '../services/googleAuthService';
+
 export const LoginPage: React.FC = () => {
   const { login, loginWithGoogle } = useAuth();
   const [email, setEmail] = useState('');
@@ -35,6 +37,15 @@ export const LoginPage: React.FC = () => {
   const [googleCustomEmail, setGoogleCustomEmail] = useState('');
   const [googleLoading, setGoogleLoading] = useState(false);
   const [showCustomGoogleInput, setShowCustomGoogleInput] = useState(false);
+  const [dynamicGoogleAccounts, setDynamicGoogleAccounts] = useState<GoogleAccountItem[]>([]);
+
+  // Dynamically load Google accounts on modal open via googleAuthService
+  useEffect(() => {
+    if (!isGoogleModalOpen) return;
+    googleAuthService.getDynamicAccounts().then((accounts) => {
+      setDynamicGoogleAccounts(accounts);
+    });
+  }, [isGoogleModalOpen]);
 
   // Check URL params for OAuth failure redirect
   useEffect(() => {
@@ -660,11 +671,7 @@ export const LoginPage: React.FC = () => {
             {/* Account List or Custom Input */}
             {!showCustomGoogleInput ? (
               <div className="border-t border-gray-200">
-                {[
-                  { name: 'Payal Jadhao', email: 'payaljadhao2709@gmail.com', avatarColor: '#2e7d32' },
-                  { name: 'Payal Jadhao', email: 'payaldjadhao@gmail.com', avatarColor: '#8e24aa' },
-                  { name: 'Payal Jadhao', email: 'payaldj2709@gmail.com', avatarColor: '#3f51b5' },
-                ].map((acc) => (
+                {dynamicGoogleAccounts.map((acc) => (
                   <button
                     key={acc.email}
                     type="button"
@@ -704,8 +711,11 @@ export const LoginPage: React.FC = () => {
               <form
                 onSubmit={(e) => {
                   e.preventDefault();
-                  if (googleCustomEmail.trim()) {
-                    handleGoogleLogin(googleCustomEmail.trim());
+                  const clean = googleCustomEmail.trim().toLowerCase();
+                  if (clean) {
+                    googleAuthService.rememberAccount(clean);
+                    googleAuthService.getDynamicAccounts().then(setDynamicGoogleAccounts);
+                    handleGoogleLogin(clean);
                   }
                 }}
                 className="mt-4 space-y-4"
