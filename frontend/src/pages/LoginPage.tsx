@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { authApi } from '../services/api';
 import { Lock, Mail, ArrowRight, ShieldCheck, Key, X, CheckCircle2, AlertTriangle, User } from 'lucide-react';
@@ -9,6 +9,9 @@ export const LoginPage: React.FC = () => {
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+
+  // Unregistered Google email dialog popup
+  const [isUnregisteredPopupOpen, setIsUnregisteredPopupOpen] = useState(false);
 
   // First-time login password change state
   const [mustChangePassword, setMustChangePassword] = useState(false);
@@ -32,6 +35,16 @@ export const LoginPage: React.FC = () => {
   const [googleCustomEmail, setGoogleCustomEmail] = useState('');
   const [googleLoading, setGoogleLoading] = useState(false);
   const [showCustomGoogleInput, setShowCustomGoogleInput] = useState(false);
+
+  // Check URL params for OAuth failure redirect
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const oauthError = params.get('error');
+    if (oauthError === 'unregistered_email' || oauthError === 'access_denied') {
+      setIsUnregisteredPopupOpen(true);
+      window.history.replaceState({}, document.title, window.location.pathname);
+    }
+  }, []);
 
   // Standard Login Submit
   const handleSubmit = async (e: React.FormEvent) => {
@@ -68,9 +81,17 @@ export const LoginPage: React.FC = () => {
       window.location.href = '/';
     } catch (err: any) {
       console.warn('Google login failed:', err);
-      const errMsg = err.response?.data?.message || err.message || 'You are not registered in TeamCRM. Please contact your administrator.';
-      setError(errMsg);
+      const errMsg: string = err.response?.data?.message || err.message || '';
       setIsGoogleModalOpen(false);
+      if (
+        errMsg.toLowerCase().includes('not registered') ||
+        errMsg.toLowerCase().includes('contact admin') ||
+        err?.response?.status === 401
+      ) {
+        setIsUnregisteredPopupOpen(true);
+      } else {
+        setError(errMsg || 'Authentication failed. Please try again.');
+      }
     } finally {
       setGoogleLoading(false);
     }
@@ -211,7 +232,7 @@ export const LoginPage: React.FC = () => {
           </div>
           <h1 className="text-2xl font-extrabold text-text-primary tracking-tight">TeamCRM</h1>
           <p className="text-sm text-text-secondary mt-1">
-            CRM + Tasks + Server Time Tracking + API Handoff
+            {/* CRM + Tasks + Server Time Tracking + API Handoff */}
           </p>
         </div>
 
@@ -731,6 +752,39 @@ export const LoginPage: React.FC = () => {
                 <span className="hover:text-gray-900 cursor-pointer">Terms</span>
               </div>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Unregistered Google Email Dialog Popup */}
+      {isUnregisteredPopupOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/55 backdrop-blur-xs p-4 animate-in fade-in duration-150">
+          <div className="bg-white rounded-3xl shadow-2xl border border-gray-200 max-w-[400px] w-full p-6 animate-in zoom-in-95 duration-200 text-center relative">
+            <button
+              type="button"
+              onClick={() => setIsUnregisteredPopupOpen(false)}
+              className="absolute top-4 right-4 text-gray-400 hover:text-gray-700 p-1 rounded-full hover:bg-gray-100 cursor-pointer transition-colors"
+            >
+              <X className="w-4 h-4" />
+            </button>
+
+            <div className="w-12 h-12 bg-amber-100 text-amber-600 rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-xs">
+              <AlertTriangle className="w-6 h-6" />
+            </div>
+
+            <h3 className="text-base font-bold text-gray-900 mb-2">Access Denied</h3>
+
+            <p className="text-sm font-semibold text-gray-700 leading-relaxed mb-6">
+              This email is not registered. Contact admin.
+            </p>
+
+            <button
+              type="button"
+              onClick={() => setIsUnregisteredPopupOpen(false)}
+              className="w-full py-2.5 bg-primary hover:bg-primary-hover text-white text-xs font-bold rounded-xl shadow-xs transition-colors cursor-pointer"
+            >
+              OK
+            </button>
           </div>
         </div>
       )}

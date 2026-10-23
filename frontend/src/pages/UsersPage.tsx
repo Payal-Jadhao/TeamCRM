@@ -241,12 +241,14 @@ export const UsersPage: React.FC = () => {
           </p>
         </div>
 
-        <button
-          onClick={() => setIsCreateModalOpen(true)}
-          className="flex items-center gap-2 px-4 py-2 bg-primary hover:bg-primary-hover text-white text-xs font-bold rounded-xl shadow-xs transition-colors self-start cursor-pointer"
-        >
-          <UserPlus className="w-4 h-4" /> Provision Employee
-        </button>
+        {currentUser?.roleName === 'ROLE_ADMIN' && (
+          <button
+            onClick={() => setIsCreateModalOpen(true)}
+            className="flex items-center gap-2 px-4 py-2 bg-primary hover:bg-primary-hover text-white text-xs font-bold rounded-xl shadow-xs transition-colors self-start cursor-pointer"
+          >
+            <UserPlus className="w-4 h-4" /> Provision Employee
+          </button>
+        )}
       </div>
 
       {/* Users Table */}
@@ -337,39 +339,47 @@ export const UsersPage: React.FC = () => {
                       )}
                     </td>
                     <td className="px-5 py-4 text-right space-x-1.5 whitespace-nowrap">
-                      <button
-                        onClick={() => openEditUser(u)}
-                        className="px-2 py-1 bg-purple-50 hover:bg-purple-100 text-primary font-bold rounded-lg border border-purple-200 transition-colors cursor-pointer"
-                        title="Edit User Info / Credentials"
-                      >
-                        <Edit3 className="w-3.5 h-3.5 inline mr-1" /> Edit
-                      </button>
-                      {currentUser?.roleName === 'ROLE_ADMIN' && (
-                        <button
-                          onClick={() => openPermissionMatrix(u)}
-                          className="px-2 py-1 bg-purple-50 hover:bg-purple-100 text-primary font-bold rounded-lg border border-purple-200 transition-colors cursor-pointer"
-                          title="Fine-grained permissions"
-                        >
-                          <Sliders className="w-3.5 h-3.5 inline mr-1" /> Perms
-                        </button>
+                      {currentUser?.roleName === 'ROLE_ADMIN' ? (
+                        <>
+                          <button
+                            onClick={() => openEditUser(u)}
+                            className="px-2 py-1 bg-purple-50 hover:bg-purple-100 text-primary font-bold rounded-lg border border-purple-200 transition-colors cursor-pointer"
+                            title="Edit User Info / Credentials"
+                          >
+                            <Edit3 className="w-3.5 h-3.5 inline mr-1" /> Edit
+                          </button>
+                          <button
+                            onClick={() => openPermissionMatrix(u)}
+                            className="px-2 py-1 bg-purple-50 hover:bg-purple-100 text-primary font-bold rounded-lg border border-purple-200 transition-colors cursor-pointer"
+                            title="Fine-grained permissions"
+                          >
+                            <Sliders className="w-3.5 h-3.5 inline mr-1" /> Perms
+                          </button>
+                          {u.roleName !== 'ROLE_ADMIN' && u.email !== 'payaldjadhao@gmail.com' && (
+                            <>
+                              <button
+                                onClick={() => handleToggleStatus(u.id)}
+                                className={`px-2 py-1 rounded-lg text-xs font-semibold transition-colors cursor-pointer ${
+                                  u.isActive
+                                    ? 'bg-amber-50 text-amber-700 hover:bg-amber-100 border border-amber-200'
+                                    : 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100 border border-emerald-200'
+                                }`}
+                              >
+                                {u.isActive ? 'Deactivate' : 'Activate'}
+                              </button>
+                              <button
+                                onClick={() => setUserToDelete(u)}
+                                className="px-2 py-1 bg-rose-50 hover:bg-rose-100 text-rose-600 font-bold rounded-lg border border-rose-200 transition-colors cursor-pointer"
+                                title="Delete User"
+                              >
+                                <Trash2 className="w-3.5 h-3.5 inline mr-1" /> Delete
+                              </button>
+                            </>
+                          )}
+                        </>
+                      ) : (
+                        <span className="text-[11px] text-gray-400 italic">View Only</span>
                       )}
-                      <button
-                        onClick={() => handleToggleStatus(u.id)}
-                        className={`px-2 py-1 rounded-lg text-xs font-semibold transition-colors cursor-pointer ${
-                          u.isActive
-                            ? 'bg-amber-50 text-amber-700 hover:bg-amber-100 border border-amber-200'
-                            : 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100 border border-emerald-200'
-                        }`}
-                      >
-                        {u.isActive ? 'Deactivate' : 'Activate'}
-                      </button>
-                      <button
-                        onClick={() => setUserToDelete(u)}
-                        className="px-2 py-1 bg-rose-50 hover:bg-rose-100 text-rose-600 font-bold rounded-lg border border-rose-200 transition-colors cursor-pointer"
-                        title="Delete User"
-                      >
-                        <Trash2 className="w-3.5 h-3.5 inline mr-1" /> Delete
-                      </button>
                     </td>
                   </tr>
                 );
@@ -419,8 +429,7 @@ export const UsersPage: React.FC = () => {
                 className="w-full px-3 py-2 bg-purple-50 rounded-lg border border-border-custom outline-none font-semibold text-primary"
               >
                 <option value="ROLE_EMPLOYEE">Employee (Contributor)</option>
-                {currentUser?.roleName === 'ROLE_ADMIN' && <option value="ROLE_MANAGER">Manager</option>}
-                {currentUser?.roleName === 'ROLE_ADMIN' && <option value="ROLE_ADMIN">Admin</option>}
+                <option value="ROLE_MANAGER">Manager</option>
               </select>
             </div>
 
@@ -571,11 +580,17 @@ export const UsersPage: React.FC = () => {
               <select
                 value={editRole}
                 onChange={(e) => setEditRole(e.target.value)}
-                className="w-full px-3 py-2 bg-purple-50 rounded-lg border border-border-custom outline-none font-semibold text-primary"
+                disabled={editRole === 'ROLE_ADMIN'}
+                className="w-full px-3 py-2 bg-purple-50 rounded-lg border border-border-custom outline-none font-semibold text-primary disabled:opacity-60"
               >
-                <option value="ROLE_EMPLOYEE">Employee (Contributor)</option>
-                {currentUser?.roleName === 'ROLE_ADMIN' && <option value="ROLE_MANAGER">Manager</option>}
-                {currentUser?.roleName === 'ROLE_ADMIN' && <option value="ROLE_ADMIN">Admin</option>}
+                {editRole === 'ROLE_ADMIN' ? (
+                  <option value="ROLE_ADMIN">Admin (Super Admin)</option>
+                ) : (
+                  <>
+                    <option value="ROLE_EMPLOYEE">Employee (Contributor)</option>
+                    <option value="ROLE_MANAGER">Manager</option>
+                  </>
+                )}
               </select>
             </div>
 

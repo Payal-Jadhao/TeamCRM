@@ -69,7 +69,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
       },
     ];
 
-  const userRole = user?.roleName || (user as any)?.role || (user?.email && (user.email.includes('payal') || user.email.includes('jadhao')) ? 'ROLE_ADMIN' : 'ROLE_EMPLOYEE');
+  const userRole = user?.roleName || (user as any)?.role || 'ROLE_EMPLOYEE';
 
   const visibleItems = navItems.filter((item) => {
     // Admin sees all items

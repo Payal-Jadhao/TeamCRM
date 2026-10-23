@@ -2,7 +2,6 @@ package com.teamcrm.service;
 
 import com.teamcrm.dto.AuthDtos.*;
 import com.teamcrm.entity.Permission;
-import com.teamcrm.entity.Role;
 import com.teamcrm.entity.User;
 import com.teamcrm.repository.RoleRepository;
 import com.teamcrm.repository.UserRepository;
@@ -19,11 +18,11 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
+import java.security.SecureRandom;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.HashSet;
 import java.util.Map;
-import java.util.Random;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
@@ -31,8 +30,9 @@ import java.util.stream.Collectors;
 @Service
 public class AuthService {
 
-    private record OtpEntry(String otp, Instant expiresAt) {}
+    private record OtpEntry(String otp, Instant expiresAt, Instant createdAt, int attempts) {}
     private final Map<String, OtpEntry> otpCache = new ConcurrentHashMap<>();
+    private final SecureRandom secureRandom = new SecureRandom();
 
     private final AuthenticationManager authenticationManager;
     private final UserRepository userRepository;
@@ -87,10 +87,10 @@ public class AuthService {
     @Transactional
     public void changePassword(Long userId, ChangePasswordRequest request) {
         User user = userRepository.findById(userId)
-                .orElseThrow(() -> new RuntimeException("User not found"));
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "User not found"));
 
         if (!passwordEncoder.matches(request.oldPassword(), user.getPasswordHash())) {
-            throw new IllegalArgumentException("Current password does not match");
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Current password does not match");
         }
 
         user.setPasswordHash(passwordEncoder.encode(request.newPassword()));
@@ -101,7 +101,7 @@ public class AuthService {
 
     public UserProfileDto getCurrentUserProfile(Long userId) {
         User user = userRepository.findById(userId)
-                .orElseThrow(() -> new RuntimeException("User not found"));
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "User not found"));
 
         Set<String> permissions = new HashSet<>();
         if (user.getRole() != null) {
@@ -125,45 +125,75 @@ public class AuthService {
                 user.getIsActive(),
                 user.getIsFirstLogin(),
                 permissions,
-                user.getInitialPassword() != null ? user.getInitialPassword() : "Password123!"
+                user.getInitialPassword() != null ? user.getInitialPassword() : "••••••"
         );
     }
 
     public SendOtpResponse sendForgotPasswordOtp(SendOtpRequest request) {
         String email = request.email().toLowerCase().trim();
         User user = userRepository.findByEmail(email)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "This email address does not exist in our system. Please check your registered email."));
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, 
+                        "This email address does not exist in our system. Please check your registered email."));
 
         if (user.getIsActive() != null && !user.getIsActive()) {
-            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Your account has been deactivated. Please contact your administrator.");
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, 
+                    "Your account has been deactivated. Please contact your administrator.");
         }
 
-        String otp = String.format("%06d", new Random().nextInt(900000) + 100000);
-        otpCache.put(email, new OtpEntry(otp, Instant.now().plus(Duration.ofMinutes(10))));
+        // Resend cooldown: 60 seconds
+        OtpEntry existing = otpCache.get(email);
+        if (existing != null && Instant.now().isBefore(existing.createdAt().plusSeconds(60))) {
+            long remaining = Duration.between(Instant.now(), existing.createdAt().plusSeconds(60)).getSeconds();
+            throw new ResponseStatusException(HttpStatus.TOO_MANY_REQUESTS, 
+                    "Please wait " + Math.max(1, remaining) + " seconds before requesting a new verification code.");
+        }
 
-        // Send OTP directly to user's registered email inbox
+        // Cryptographically secure 6-digit OTP
+        int code = 100000 + secureRandom.nextInt(900000);
+        String otp = String.valueOf(code);
+
+        // Store with 10-minute validity, initialized with 0 failed attempts
+        otpCache.put(email, new OtpEntry(otp, Instant.now().plus(Duration.ofMinutes(10)), Instant.now(), 0));
+
+        // Dispatch email via JavaMailSender (fails if SMTP not accepted)
         emailService.sendOtpEmail(email, otp);
 
-        return new SendOtpResponse(true, "A 6-digit verification code has been sent to your email address (" + email + "). Please check your inbox.");
+        return new SendOtpResponse(true, 
+                "A 6-digit verification code has been sent to your email address (" + email + "). Please check your inbox.");
     }
 
     @Transactional
     public void verifyAndResetPassword(VerifyResetPasswordRequest request) {
         String email = request.email().toLowerCase().trim();
         OtpEntry entry = otpCache.get(email);
+
         if (entry == null || Instant.now().isAfter(entry.expiresAt())) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid or expired OTP. Please request a new verification code.");
+            otpCache.remove(email);
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, 
+                    "Invalid or expired OTP. Please request a new verification code.");
         }
+
         if (!entry.otp().equals(request.otp().trim())) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Incorrect OTP verification code. Please check the 6-digit code.");
+            int newAttempts = entry.attempts() + 1;
+            if (newAttempts >= 5) {
+                otpCache.remove(email);
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, 
+                        "Too many failed attempts. This OTP has been invalidated. Please request a new one.");
+            } else {
+                otpCache.put(email, new OtpEntry(entry.otp(), entry.expiresAt(), entry.createdAt(), newAttempts));
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, 
+                        "Incorrect OTP verification code. (" + (5 - newAttempts) + " attempts remaining)");
+            }
         }
 
         User user = userRepository.findByEmail(email)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "This email address does not exist in our system."));
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, 
+                        "This email address does not exist in our system."));
 
         if (request.oldPassword() != null && !request.oldPassword().isBlank()) {
             if (!passwordEncoder.matches(request.oldPassword(), user.getPasswordHash())) {
-                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "The old password entered does not match your current password.");
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, 
+                        "The old password entered does not match your current password.");
             }
         }
 
@@ -172,19 +202,27 @@ public class AuthService {
         user.setUpdatedAt(Instant.now());
         userRepository.save(user);
 
+        // Single-use: remove immediately
         otpCache.remove(email);
     }
 
     public AuthResponse loginWithGoogle(GoogleLoginRequest request) {
         String email = request.email().toLowerCase().trim();
-        User user = userRepository.findByEmail(email)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.UNAUTHORIZED, "You are not registered in TeamCRM. Please contact your administrator."));
 
-        if (!user.getIsActive()) {
-            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Your TeamCRM account has been deactivated. Please contact your administrator.");
+        // 1. Must be pre-registered in the database. Never auto-create.
+        User user = userRepository.findByEmail(email)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.UNAUTHORIZED, 
+                        "This email is not registered. Contact admin."));
+
+        // 2. Must be active
+        if (user.getIsActive() != null && !user.getIsActive()) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, 
+                    "Your TeamCRM account has been deactivated. Please contact your administrator.");
         }
 
-        String jwt = jwtUtils.generateAccessToken(user.getEmail(), user.getRole().getName(), user.getId());
+        // 3. Authenticate with verified database role
+        String roleName = user.getRole() != null ? user.getRole().getName() : "ROLE_EMPLOYEE";
+        String jwt = jwtUtils.generateAccessToken(user.getEmail(), roleName, user.getId());
         String refreshToken = jwtUtils.generateRefreshToken(user.getEmail());
 
         Set<String> permissions = new HashSet<>();
@@ -205,7 +243,7 @@ public class AuthService {
                 user.getId(),
                 user.getEmail(),
                 user.getFullName(),
-                user.getRole().getName(),
+                roleName,
                 user.getTeamTag(),
                 user.getIsFirstLogin(),
                 permissions

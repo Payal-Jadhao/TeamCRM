@@ -248,7 +248,27 @@ function setStored<T>(key: string, val: T): void {
 
 export const mockStore = {
   getUsers: (): User[] => {
-    return getStored<User[]>('teamcrm_store_users', INITIAL_USERS);
+    let users = getStored<User[]>('teamcrm_store_users', INITIAL_USERS);
+    // Enforce invariant: only payaldjadhao@gmail.com is ROLE_ADMIN
+    let modified = false;
+    users = users.map((u) => {
+      if (u.email.toLowerCase() === 'payaldjadhao@gmail.com') {
+        if (u.roleName !== 'ROLE_ADMIN') {
+          u.roleName = 'ROLE_ADMIN';
+          (u as any).role = 'ROLE_ADMIN';
+          modified = true;
+        }
+      } else if (u.roleName === 'ROLE_ADMIN') {
+        u.roleName = 'ROLE_EMPLOYEE';
+        (u as any).role = 'ROLE_EMPLOYEE';
+        modified = true;
+      }
+      return u;
+    });
+    if (modified) {
+      setStored('teamcrm_store_users', users);
+    }
+    return users;
   },
 
   createUser: (data: {
@@ -261,19 +281,24 @@ export const mockStore = {
     extraPermissions?: string[];
   }): User => {
     const users = mockStore.getUsers();
+    const cleanEmail = data.email.toLowerCase().trim();
+    if (users.some((u) => u.email.toLowerCase() === cleanEmail)) {
+      throw new Error('Email is already registered');
+    }
+    const safeRole = data.roleName === 'ROLE_MANAGER' ? 'ROLE_MANAGER' : 'ROLE_EMPLOYEE';
     const newUser: User = {
       id: Date.now(),
-      email: data.email,
+      email: cleanEmail,
       fullName: data.fullName,
-      roleName: data.roleName as any,
+      roleName: safeRole as any,
       teamTag: (data.teamTag as any) || 'FRONTEND',
       phone: data.phone || '',
       isActive: true,
       isFirstLogin: true,
       initialPassword: data.tempPassword || 'Pass@123',
-      permissions: data.extraPermissions || [data.roleName, 'TASK_CREATE', 'TASK_EDIT', 'TIME_TRACK']
+      permissions: data.extraPermissions || [safeRole, 'TASK_CREATE', 'TASK_EDIT', 'TIME_TRACK']
     };
-    (newUser as any).role = data.roleName;
+    (newUser as any).role = safeRole;
     users.push(newUser);
     setStored('teamcrm_store_users', users);
     return newUser;

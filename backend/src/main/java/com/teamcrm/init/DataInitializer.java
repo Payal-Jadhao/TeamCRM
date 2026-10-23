@@ -13,9 +13,12 @@ import java.time.LocalDate;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
+import java.util.stream.Collectors;
 
 @Component
 public class DataInitializer implements CommandLineRunner {
+
+    private static final String ADMIN_EMAIL = "payaldjadhao@gmail.com";
 
     private final RoleRepository roleRepository;
     private final PermissionRepository permissionRepository;
@@ -36,22 +39,22 @@ public class DataInitializer implements CommandLineRunner {
     private final PasswordEncoder passwordEncoder;
 
     public DataInitializer(RoleRepository roleRepository,
-                           PermissionRepository permissionRepository,
-                           TeamRepository teamRepository,
-                           UserRepository userRepository,
-                           ProjectRepository projectRepository,
-                           TaskRepository taskRepository,
-                           TaskChecklistItemRepository checklistRepository,
-                           TaskTimeLogRepository timeLogRepository,
-                           TaskCommentRepository commentRepository,
-                           ApiDocRepository apiDocRepository,
-                           MeetingRepository meetingRepository,
-                           LeadRepository leadRepository,
-                           CustomerRepository customerRepository,
-                           DealRepository dealRepository,
-                           NotificationRepository notificationRepository,
-                           AuditLogRepository auditLogRepository,
-                           PasswordEncoder passwordEncoder) {
+            PermissionRepository permissionRepository,
+            TeamRepository teamRepository,
+            UserRepository userRepository,
+            ProjectRepository projectRepository,
+            TaskRepository taskRepository,
+            TaskChecklistItemRepository checklistRepository,
+            TaskTimeLogRepository timeLogRepository,
+            TaskCommentRepository commentRepository,
+            ApiDocRepository apiDocRepository,
+            MeetingRepository meetingRepository,
+            LeadRepository leadRepository,
+            CustomerRepository customerRepository,
+            DealRepository dealRepository,
+            NotificationRepository notificationRepository,
+            AuditLogRepository auditLogRepository,
+            PasswordEncoder passwordEncoder) {
         this.roleRepository = roleRepository;
         this.permissionRepository = permissionRepository;
         this.teamRepository = teamRepository;
@@ -74,35 +77,37 @@ public class DataInitializer implements CommandLineRunner {
     @Override
     @Transactional
     public void run(String... args) {
-        // 1. Create Permissions if empty
+        // 1. Permissions
         if (permissionRepository.count() == 0) {
             List<String[]> permData = List.of(
-                    new String[]{"USER_CREATE", "AUTH", "Create new employees and assign roles"},
-                    new String[]{"USER_EDIT", "AUTH", "Modify employee profile and team tags"},
-                    new String[]{"USER_DEACTIVATE", "AUTH", "Deactivate or reactivate an employee"},
-                    new String[]{"ROLE_MANAGE", "AUTH", "Manage roles and fine-grained permissions matrix"},
-                    new String[]{"PROJECT_CREATE", "PROJECTS", "Create new projects and add members"},
-                    new String[]{"PROJECT_EDIT", "PROJECTS", "Edit project details and settings"},
-                    new String[]{"TASK_CREATE", "TASKS", "Create new tasks in projects"},
-                    new String[]{"TASK_ASSIGN", "TASKS", "Assign tasks to team members"},
-                    new String[]{"TASK_EDIT", "TASKS", "Edit task details, description, due date"},
-                    new String[]{"TASK_DELETE", "TASKS", "Delete or archive tasks"},
-                    new String[]{"TIME_TRACK", "TIME_TRACKING", "Start, pause and end task timers"},
-                    new String[]{"TIME_EDIT_MANUAL", "TIME_TRACKING", "Manually adjust or correct task time logs"},
-                    new String[]{"CHECKLIST_MANAGE", "TASKS", "Create, update and delete checklist items"},
-                    new String[]{"DISCUSSION_POST", "DISCUSSIONS", "Post messages and queries in task discussions"},
-                    new String[]{"DISCUSSION_MENTION_ALL", "DISCUSSIONS", "Use @everyone mention in task discussions"},
-                    new String[]{"DISCUSSION_MODERATE", "DISCUSSIONS", "Moderate or remove task discussion messages"},
-                    new String[]{"API_DOC_PUBLISH", "API_HANDOFF", "Publish and update backend-to-frontend API specifications"},
-                    new String[]{"API_DOC_REVIEW", "API_HANDOFF", "Change API status and request modifications"},
-                    new String[]{"MEETING_SCHEDULE", "MEETINGS", "Schedule company meetings and invite members"},
-                    new String[]{"MEETING_EDIT_NOTES", "MEETINGS", "Write meeting minutes and create action items"},
-                    new String[]{"LEAD_VIEW_ALL", "CRM", "View all company leads"},
-                    new String[]{"LEAD_MANAGE", "CRM", "Create, edit and convert leads into customers"},
-                    new String[]{"DEAL_MANAGE", "CRM", "Manage deals pipeline and update stages"},
-                    new String[]{"REPORT_VIEW", "REPORTS", "Access time tracking, team workload and CRM reports"},
-                    new String[]{"AUDIT_VIEW", "AUDIT", "View system-wide activity and security audit logs"}
-            );
+                    new String[] { "USER_CREATE", "AUTH", "Create new employees and assign roles" },
+                    new String[] { "USER_EDIT", "AUTH", "Modify employee profile and team tags" },
+                    new String[] { "USER_DEACTIVATE", "AUTH", "Deactivate or reactivate an employee" },
+                    new String[] { "ROLE_MANAGE", "AUTH", "Manage roles and fine-grained permissions matrix" },
+                    new String[] { "PROJECT_CREATE", "PROJECTS", "Create new projects and add members" },
+                    new String[] { "PROJECT_EDIT", "PROJECTS", "Edit project details and settings" },
+                    new String[] { "TASK_CREATE", "TASKS", "Create new tasks in projects" },
+                    new String[] { "TASK_ASSIGN", "TASKS", "Assign tasks to team members" },
+                    new String[] { "TASK_EDIT", "TASKS", "Edit task details, description, due date" },
+                    new String[] { "TASK_DELETE", "TASKS", "Delete or archive tasks" },
+                    new String[] { "TIME_TRACK", "TIME_TRACKING", "Start, pause and end task timers" },
+                    new String[] { "TIME_EDIT_MANUAL", "TIME_TRACKING", "Manually adjust or correct task time logs" },
+                    new String[] { "CHECKLIST_MANAGE", "TASKS", "Create, update and delete checklist items" },
+                    new String[] { "DISCUSSION_POST", "DISCUSSIONS", "Post messages and queries in task discussions" },
+                    new String[] { "DISCUSSION_MENTION_ALL", "DISCUSSIONS",
+                            "Use @everyone mention in task discussions" },
+                    new String[] { "DISCUSSION_MODERATE", "DISCUSSIONS",
+                            "Moderate or remove task discussion messages" },
+                    new String[] { "API_DOC_PUBLISH", "API_HANDOFF",
+                            "Publish and update backend-to-frontend API specifications" },
+                    new String[] { "API_DOC_REVIEW", "API_HANDOFF", "Change API status and request modifications" },
+                    new String[] { "MEETING_SCHEDULE", "MEETINGS", "Schedule company meetings and invite members" },
+                    new String[] { "MEETING_EDIT_NOTES", "MEETINGS", "Write meeting minutes and create action items" },
+                    new String[] { "LEAD_VIEW_ALL", "CRM", "View all company leads" },
+                    new String[] { "LEAD_MANAGE", "CRM", "Create, edit and convert leads into customers" },
+                    new String[] { "DEAL_MANAGE", "CRM", "Manage deals pipeline and update stages" },
+                    new String[] { "REPORT_VIEW", "REPORTS", "Access time tracking, team workload and CRM reports" },
+                    new String[] { "AUDIT_VIEW", "AUDIT", "View system-wide activity and security audit logs" });
             for (String[] p : permData) {
                 permissionRepository.save(new Permission(p[0], p[1], p[2]));
             }
@@ -117,21 +122,24 @@ public class DataInitializer implements CommandLineRunner {
             return roleRepository.save(r);
         });
 
-        Role managerRole = roleRepository.findByName("ROLE_MANAGER").orElseGet(() -> {
+        // Manager: everything EXCEPT user/role administration (only super admin creates
+        // users)
+        roleRepository.findByName("ROLE_MANAGER").orElseGet(() -> {
             Role r = new Role("ROLE_MANAGER", "Team manager");
+            Set<String> blocked = Set.of("ROLE_MANAGE", "USER_CREATE", "USER_EDIT", "USER_DEACTIVATE");
             Set<Permission> mgrPerms = allPerms.stream()
-                    .filter(p -> !"ROLE_MANAGE".equals(p.getCode()))
-                    .collect(java.util.stream.Collectors.toSet());
+                    .filter(p -> !blocked.contains(p.getCode()))
+                    .collect(Collectors.toSet());
             r.setPermissions(mgrPerms);
             return roleRepository.save(r);
         });
 
-        Role employeeRole = roleRepository.findByName("ROLE_EMPLOYEE").orElseGet(() -> {
+        roleRepository.findByName("ROLE_EMPLOYEE").orElseGet(() -> {
             Role r = new Role("ROLE_EMPLOYEE", "Individual contributor");
             Set<Permission> empPerms = allPerms.stream()
                     .filter(p -> List.of("TASK_CREATE", "TASK_EDIT", "TIME_TRACK", "CHECKLIST_MANAGE",
                             "DISCUSSION_POST", "API_DOC_REVIEW", "LEAD_MANAGE", "DEAL_MANAGE").contains(p.getCode()))
-                    .collect(java.util.stream.Collectors.toSet());
+                    .collect(Collectors.toSet());
             r.setPermissions(empPerms);
             return roleRepository.save(r);
         });
@@ -146,20 +154,24 @@ public class DataInitializer implements CommandLineRunner {
             teamRepository.save(new Team("Product Design", "DESIGN", "Design systems & UX wireframes"));
         }
 
-        // 4. Single Initial Admin Account:
-        // payaldjadhao@gmail.com / 1234
-        User admin = userRepository.findByEmail("payaldjadhao@gmail.com").orElseGet(User::new);
-        admin.setEmail("payaldjadhao@gmail.com");
-        admin.setPasswordHash(passwordEncoder.encode("1234"));
-        admin.setInitialPassword("1234");
-        admin.setFullName("Payal Jadhao");
+        // 4. Single super admin: payaldjadhao@gmail.com
+        // Password is set ONLY when the account is first created (not reset on every
+        // restart)
+        User admin = userRepository.findByEmail(ADMIN_EMAIL).orElse(null);
+        if (admin == null) {
+            admin = new User();
+            admin.setEmail(ADMIN_EMAIL);
+            admin.setPasswordHash(passwordEncoder.encode("1234"));
+            admin.setInitialPassword("1234");
+            admin.setFullName("Payal Jadhao");
+            admin.setIsFirstLogin(false);
+        }
         admin.setRole(adminRole);
         admin.setTeamTag("MANAGEMENT");
         admin.setIsActive(true);
-        admin.setIsFirstLogin(false);
         admin = userRepository.save(admin);
 
-        // 5. Project & Initial Data
+        // 5. Sample data (only on a fresh DB) - everything owned by the admin
         if (projectRepository.count() == 0) {
             Project project = new Project();
             project.setName("TeamCRM Core Platform");
@@ -169,7 +181,6 @@ public class DataInitializer implements CommandLineRunner {
             project.setOwner(admin);
             project = projectRepository.save(project);
 
-            // 6. CRM Leads & Customers & Deals
             Lead lead1 = new Lead();
             lead1.setFirstName("Rohan");
             lead1.setLastName("Mehta");
@@ -178,8 +189,9 @@ public class DataInitializer implements CommandLineRunner {
             lead1.setPhone("+91 9123456789");
             lead1.setStatus("QUALIFIED");
             lead1.setSource("LINKEDIN");
-            lead1.setNotes("High intent enterprise prospect. Needs 50 licenses with server-side time tracking compliance.");
-            lead1.setAssignedTo(employee);
+            lead1.setNotes(
+                    "High intent enterprise prospect. Needs 50 licenses with server-side time tracking compliance.");
+            lead1.setAssignedTo(admin);
             lead1 = leadRepository.save(lead1);
 
             Customer cust1 = new Customer();
@@ -188,7 +200,7 @@ public class DataInitializer implements CommandLineRunner {
             cust1.setWebsite("https://apexlogistics.in");
             cust1.setPrimaryContactName("Rohan Mehta");
             cust1.setPrimaryContactEmail("rohan@apexlogistics.in");
-            cust1.setAccountManager(employee);
+            cust1.setAccountManager(admin);
             cust1 = customerRepository.save(cust1);
 
             Deal deal1 = new Deal();
@@ -198,23 +210,23 @@ public class DataInitializer implements CommandLineRunner {
             deal1.setStage("NEGOTIATION");
             deal1.setDealValue(new BigDecimal("36000.00"));
             deal1.setExpectedCloseDate(LocalDate.now().plusDays(25));
-            deal1.setAssignedTo(employee);
+            deal1.setAssignedTo(admin);
             deal1.setNotes("Finalizing annual billing terms with procurement team.");
             deal1 = dealRepository.save(deal1);
 
-            // 7. Tasks
             Task t1 = new Task();
             t1.setProject(project);
             t1.setTaskCode("CRM-101");
             t1.setTitle("Implement Server-Side Time Tracking Session Logic");
-            t1.setDescription("Build REST endpoints for start, pause, resume, and calculate cycle time securely on Spring Boot.");
+            t1.setDescription(
+                    "Build REST endpoints for start, pause, resume, and calculate cycle time securely on Spring Boot.");
             t1.setType("FEATURE");
             t1.setPriority("URGENT");
             t1.setStatus("IN_PROGRESS");
-            t1.setAssignee(employee);
-            t1.setAssigneeIds(employee.getId().toString());
-            t1.setAssigneeNames(employee.getFullName());
-            t1.setReporter(manager);
+            t1.setAssignee(admin);
+            t1.setAssigneeIds(admin.getId().toString());
+            t1.setAssigneeNames(admin.getFullName());
+            t1.setReporter(admin);
             t1.setDueDate(LocalDate.now().plusDays(7));
             t1.setEstimatedHours(new BigDecimal("16.00"));
             t1.setLabels("backend,timetrack,core");
@@ -226,35 +238,37 @@ public class DataInitializer implements CommandLineRunner {
             t2.setProject(project);
             t2.setTaskCode("CRM-102");
             t2.setTitle("Build Topbar Live Running Timer Chip with Ticks");
-            t2.setDescription("Create React header widget calculating from server start_time with pause/stop dropdown.");
+            t2.setDescription(
+                    "Create React header widget calculating from server start_time with pause/stop dropdown.");
             t2.setType("FEATURE");
             t2.setPriority("HIGH");
             t2.setStatus("IN_PROGRESS");
-            t2.setAssignee(employee);
-            t2.setAssigneeIds(employee.getId().toString());
-            t2.setAssigneeNames(employee.getFullName());
-            t2.setReporter(manager);
+            t2.setAssignee(admin);
+            t2.setAssigneeIds(admin.getId().toString());
+            t2.setAssigneeNames(admin.getFullName());
+            t2.setReporter(admin);
             t2.setDueDate(LocalDate.now().plusDays(5));
             t2.setEstimatedHours(new BigDecimal("12.00"));
             t2.setLabels("frontend,ui,timer");
-            t2 = taskRepository.save(t2);
+            taskRepository.save(t2);
 
             Task t3 = new Task();
             t3.setProject(project);
             t3.setTaskCode("CRM-103");
             t3.setTitle("API Handoff Module: Contract viewer & Status Flow");
-            t3.setDescription("Design UI for draft -> ready -> integrating lifecycle with JSON request/response preview.");
+            t3.setDescription(
+                    "Design UI for draft -> ready -> integrating lifecycle with JSON request/response preview.");
             t3.setType("FEATURE");
             t3.setPriority("MEDIUM");
             t3.setStatus("TODO");
-            t3.setAssignee(employee);
-            t3.setAssigneeIds(employee.getId().toString());
-            t3.setAssigneeNames(employee.getFullName());
-            t3.setReporter(manager);
+            t3.setAssignee(admin);
+            t3.setAssigneeIds(admin.getId().toString());
+            t3.setAssigneeNames(admin.getFullName());
+            t3.setReporter(admin);
             t3.setDueDate(LocalDate.now().plusDays(10));
             t3.setEstimatedHours(new BigDecimal("14.00"));
             t3.setLabels("frontend,api-handoff");
-            t3 = taskRepository.save(t3);
+            taskRepository.save(t3);
 
             Task t4 = new Task();
             t4.setProject(project);
@@ -269,15 +283,14 @@ public class DataInitializer implements CommandLineRunner {
             t4.setReporter(admin);
             t4.setDueDate(LocalDate.now().plusDays(14));
             t4.setEstimatedHours(new BigDecimal("8.00"));
-            t4 = taskRepository.save(t4);
+            taskRepository.save(t4);
 
-            // Checklists
             TaskChecklistItem chk1 = new TaskChecklistItem();
             chk1.setTask(t1);
             chk1.setText("Design task_time_logs table with start_time & end_time");
             chk1.setIsDone(true);
             chk1.setPosition(1);
-            chk1.setDoneBy(employee);
+            chk1.setDoneBy(admin);
             checklistRepository.save(chk1);
 
             TaskChecklistItem chk2 = new TaskChecklistItem();
@@ -287,7 +300,6 @@ public class DataInitializer implements CommandLineRunner {
             chk2.setPosition(2);
             checklistRepository.save(chk2);
 
-            // Meeting
             Meeting meeting = new Meeting();
             meeting.setTitle("Sprint Architecture Sync");
             meeting.setAgenda("Review sprint goals, task breakdown, and CRM deliverables.");
@@ -297,11 +309,9 @@ public class DataInitializer implements CommandLineRunner {
             meeting.setMeetingLink("https://meet.google.com/crm-sync-dev");
             meeting.setStatus("SCHEDULED");
             meeting.setLinkedTask(t1);
-            meeting.setOrganizer(manager);
+            meeting.setOrganizer(admin);
             Set<User> attendees = new HashSet<>();
             attendees.add(admin);
-            attendees.add(manager);
-            attendees.add(employee);
             meeting.setAttendees(attendees);
             meetingRepository.save(meeting);
         }

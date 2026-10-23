@@ -17,15 +17,15 @@ import {
   EmployeeDashboard,
   AuditLogItem
 } from '../types';
-import { mockStore, INITIAL_USERS } from './mockStore';
+import { mockStore } from './mockStore';
 
 const envApiUrl = (import.meta.env.VITE_API_BASE_URL || '').trim();
 const isDummyUrl = !envApiUrl || envApiUrl.includes('xxxx') || envApiUrl.includes('placeholder') || envApiUrl.includes('example.com');
 
 const API_BASE_URL = isDummyUrl
   ? (typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
-      ? 'http://localhost:8080/api/v1'
-      : '')
+    ? 'http://localhost:8080/api/v1'
+    : '')
   : envApiUrl;
 
 export const apiClient = axios.create({
@@ -33,7 +33,7 @@ export const apiClient = axios.create({
   headers: {
     'Content-Type': 'application/json',
   },
-  timeout: 8000,
+  timeout: 15000,
 });
 
 // Attach Authorization header if access token exists
@@ -45,23 +45,61 @@ apiClient.interceptors.request.use((config) => {
   return config;
 });
 
-// Handle 401s
+// Expired / invalid session on protected endpoints -> clear and go to login
 apiClient.interceptors.response.use(
   (response) => response,
   (error) => {
+    const status = error?.response?.status;
+    const url: string = error?.config?.url || '';
+    if (status === 401 && !url.startsWith('/auth/') && sessionStorage.getItem('teamcrm_token')) {
+      ['teamcrm_token', 'teamcrm_refresh_token', 'teamcrm_user'].forEach((k) => {
+        sessionStorage.removeItem(k);
+        localStorage.removeItem(k);
+      });
+      window.location.href = '/';
+    }
     return Promise.reject(error);
   }
 );
 
-// Resilient wrapper: calls remote backend, or smoothly uses persistent mockStore on network/CORS error
-async function safeCall<T>(remoteCall: () => Promise<T>, fallbackCall: () => T | Promise<T>): Promise<T> {
+interface SafeCallOptions {
+  /** Never use the mock store when a real backend is configured (use for auth / OTP) */
+  strict?: boolean;
+  /** Message to show when server answers 401 without a message */
+  msg401?: string;
+}
+
+/**
+ * - If the server ANSWERED with an error (400/401/403/404/500...), that error is shown. No mock fallback.
+ * - Mock fallback is used only when there is no backend configured, or (non-strict) when the network is down.
+ */
+async function safeCall<T>(
+  remoteCall: () => Promise<T>,
+  fallbackCall: () => T | Promise<T>,
+  opts: SafeCallOptions = {}
+): Promise<T> {
   if (!API_BASE_URL) {
     return await fallbackCall();
   }
   try {
     return await remoteCall();
   } catch (err: any) {
-    console.info('Backend unreachable or CORS preflight restricted, executing resilient store fallback:', err?.message || 'Network');
+    if (err?.response) {
+      const data = err.response.data;
+      let msg: string =
+        (typeof data === 'string' && data) ||
+        data?.message ||
+        '';
+      if (!msg && err.response.status === 401 && opts.msg401) msg = opts.msg401;
+      if (!msg) msg = data?.error || err.message || 'Request failed';
+      const e: any = new Error(msg);
+      e.response = err.response;
+      throw e;
+    }
+    if (opts.strict) {
+      throw new Error('Cannot reach the server. Please check your connection and try again.');
+    }
+    console.info('Backend unreachable, using local store fallback:', err?.message || 'Network');
     return await fallbackCall();
   }
 }
@@ -78,15 +116,12 @@ export const authApi = {
           throw new Error('Invalid email or password');
         }
         const expected = found.initialPassword || '1234';
-        if (password !== expected && password !== '1234' && password !== 'Pass@123' && password !== 'Password123!') {
+        if (password !== expected) {
           throw new Error('Invalid email or password');
         }
         if (!found.isActive) {
           throw new Error('Your TeamCRM account has been deactivated. Please contact your administrator.');
         }
-        const isPayal = (email.includes('payal') || email.includes('jadhao')) && !email.includes('jayshree');
-        const role = isPayal ? 'ROLE_ADMIN' : found.roleName;
-
         return {
           accessToken: 'mock_jwt_token_' + Date.now(),
           refreshToken: 'mock_refresh_token_' + Date.now(),
@@ -94,27 +129,20 @@ export const authApi = {
           userId: found.id || 1,
           email: found.email,
           fullName: found.fullName,
-          role: role,
-          teamTag: isPayal ? 'MANAGEMENT' : found.teamTag,
+          role: found.roleName,
+          teamTag: found.teamTag,
           isFirstLogin: false,
-          permissions: isPayal
-            ? [
-                'ROLE_ADMIN', 'USER_CREATE', 'USER_EDIT', 'USER_DEACTIVATE', 'ROLE_MANAGE',
-                'PROJECT_CREATE', 'PROJECT_EDIT', 'TASK_CREATE', 'TASK_ASSIGN', 'TASK_EDIT',
-                'TASK_DELETE', 'TIME_TRACK', 'TIME_EDIT_MANUAL', 'CHECKLIST_MANAGE',
-                'DISCUSSION_POST', 'DISCUSSION_MENTION_ALL', 'DISCUSSION_MODERATE',
-                'API_DOC_PUBLISH', 'API_DOC_REVIEW', 'MEETING_SCHEDULE', 'MEETING_EDIT_NOTES',
-                'LEAD_VIEW_ALL', 'LEAD_MANAGE', 'DEAL_MANAGE', 'REPORT_VIEW', 'AUDIT_VIEW'
-              ]
-            : found.permissions || ['ROLE_EMPLOYEE', 'TASK_CREATE', 'TIME_TRACK'],
+          permissions: found.permissions || ['ROLE_EMPLOYEE', 'TASK_CREATE', 'TIME_TRACK'],
         };
-      }
+      },
+      { strict: true, msg401: 'Invalid email or password' }
     );
   },
   changePassword: async (oldPassword: string, newPassword: string): Promise<string> => {
     return safeCall(
       () => apiClient.post<string>('/auth/change-password', { oldPassword, newPassword }).then((r) => r.data),
-      () => 'Password updated successfully'
+      () => 'Password updated successfully',
+      { strict: true }
     );
   },
   getMe: async (): Promise<User> => {
@@ -123,13 +151,14 @@ export const authApi = {
       () => {
         const u = sessionStorage.getItem('teamcrm_user') || localStorage.getItem('teamcrm_user');
         if (u) return JSON.parse(u);
-        return INITIAL_USERS[0];
+        throw new Error('Not signed in');
       }
     );
   },
   sendForgotPasswordOtp: async (email: string): Promise<{ success: boolean; message: string; otp?: string }> => {
     return safeCall(
-      () => apiClient.post('/auth/forgot-password/send-otp', { email }).then((r) => r.data),
+      // sending a real email can take a while -> longer timeout
+      () => apiClient.post('/auth/forgot-password/send-otp', { email }, { timeout: 40000 }).then((r) => r.data),
       () => {
         const users = mockStore.getUsers();
         const found = users.find((u) => u.email.toLowerCase() === email.trim().toLowerCase());
@@ -140,23 +169,26 @@ export const authApi = {
         sessionStorage.setItem('teamcrm_otp_' + email.trim().toLowerCase(), otp);
         return {
           success: true,
-          message: `A 6-digit verification code has been dispatched to ${email}. (Verification OTP: ${otp})`,
+          message: `Demo mode (no backend): your OTP is ${otp}`,
           otp,
         };
-      }
+      },
+      { strict: true }
     );
   },
   verifyOtp: async (email: string, otp: string): Promise<{ success: boolean; message: string }> => {
-    return safeCall(
-      () => apiClient.post('/auth/forgot-password/verify-otp', { email, otp }).then((r) => r.data),
-      () => {
-        const saved = sessionStorage.getItem('teamcrm_otp_' + email.trim().toLowerCase());
-        if (saved && saved !== otp.trim()) {
-          throw new Error('Incorrect OTP verification code. Please check the 6-digit code.');
-        }
-        return { success: true, message: 'OTP verified successfully.' };
+    // The backend has no separate verify-otp endpoint. The OTP is verified on the server
+    // in the final "verify-reset" call, so here we only validate the format.
+    if (!/^\d{6}$/.test(otp.trim())) {
+      throw new Error('Please enter the 6-digit OTP code.');
+    }
+    if (!API_BASE_URL) {
+      const saved = sessionStorage.getItem('teamcrm_otp_' + email.trim().toLowerCase());
+      if (saved && saved !== otp.trim()) {
+        throw new Error('Incorrect OTP verification code. Please check the 6-digit code.');
       }
-    );
+    }
+    return { success: true, message: 'OTP accepted.' };
   },
   verifyAndResetPassword: async (data: { email: string; otp: string; oldPassword?: string; newPassword: string }): Promise<string> => {
     return safeCall(
@@ -165,12 +197,12 @@ export const authApi = {
         const users = mockStore.getUsers();
         const found = users.find((u) => u.email.toLowerCase() === data.email.trim().toLowerCase());
         if (found) {
-          found.initialPassword = data.newPassword;
           mockStore.updateUser(found.id, { initialPassword: data.newPassword });
         }
         sessionStorage.removeItem('teamcrm_otp_' + data.email.trim().toLowerCase());
         return 'Password reset successfully';
-      }
+      },
+      { strict: true }
     );
   },
   loginWithGoogle: async (email: string, fullName?: string, googleToken?: string): Promise<AuthResponse> => {
@@ -180,35 +212,25 @@ export const authApi = {
         const users = mockStore.getUsers();
         const found = users.find((u) => u.email.toLowerCase() === email.trim().toLowerCase());
         if (!found) {
-          throw new Error('You are not registered in TeamCRM. Please contact your administrator.');
+          throw new Error('This email is not registered. Contact admin.');
         }
         if (!found.isActive) {
           throw new Error('Your TeamCRM account has been deactivated. Please contact your administrator.');
         }
-        const isPayal = (email.includes('payal') || email.includes('jadhao')) && !email.includes('jayshree');
-        const role = isPayal ? 'ROLE_ADMIN' : found.roleName;
         return {
           accessToken: 'mock_google_token_' + Date.now(),
           refreshToken: 'mock_google_refresh_' + Date.now(),
           tokenType: 'Bearer',
           userId: found.id || 1,
           email: found.email,
-          fullName: fullName || found.fullName,
-          role: role,
-          teamTag: isPayal ? 'MANAGEMENT' : found.teamTag,
+          fullName: found.fullName,
+          role: found.roleName,
+          teamTag: found.teamTag,
           isFirstLogin: false,
-          permissions: isPayal
-            ? [
-                'ROLE_ADMIN', 'USER_CREATE', 'USER_EDIT', 'USER_DEACTIVATE', 'ROLE_MANAGE',
-                'PROJECT_CREATE', 'PROJECT_EDIT', 'TASK_CREATE', 'TASK_ASSIGN', 'TASK_EDIT',
-                'TASK_DELETE', 'TIME_TRACK', 'TIME_EDIT_MANUAL', 'CHECKLIST_MANAGE',
-                'DISCUSSION_POST', 'DISCUSSION_MENTION_ALL', 'DISCUSSION_MODERATE',
-                'API_DOC_PUBLISH', 'API_DOC_REVIEW', 'MEETING_SCHEDULE', 'MEETING_EDIT_NOTES',
-                'LEAD_VIEW_ALL', 'LEAD_MANAGE', 'DEAL_MANAGE', 'REPORT_VIEW', 'AUDIT_VIEW'
-              ]
-            : found.permissions || ['ROLE_EMPLOYEE'],
+          permissions: found.permissions || ['ROLE_EMPLOYEE'],
         };
-      }
+      },
+      { strict: true, msg401: 'This email is not registered. Contact admin.' }
     );
   },
 };
@@ -232,18 +254,19 @@ export const userApi = {
   }): Promise<User> => {
     return safeCall(
       () => apiClient.post<User>('/users', data).then((r) => r.data),
-      () => mockStore.createUser(data)
+      () => mockStore.createUser(data),
+      { strict: true }
     );
   },
   toggleStatus: async (userId: number): Promise<void> => {
     return safeCall(
-      () => apiClient.patch(`/users/${userId}/toggle-status`).then(() => {}),
+      () => apiClient.patch(`/users/${userId}/toggle-status`).then(() => { }),
       () => mockStore.toggleStatus(userId)
     );
   },
   updatePermissions: async (userId: number, permissionCodes: string[]): Promise<void> => {
     return safeCall(
-      () => apiClient.put(`/users/${userId}/permissions`, { userId, permissionCodes }).then(() => {}),
+      () => apiClient.put(`/users/${userId}/permissions`, { userId, permissionCodes }).then(() => { }),
       () => {
         mockStore.updateUser(userId, { permissions: permissionCodes });
       }
@@ -263,7 +286,7 @@ export const userApi = {
   },
   deleteUser: async (id: number): Promise<void> => {
     return safeCall(
-      () => apiClient.delete(`/users/${id}`).then(() => {}),
+      () => apiClient.delete(`/users/${id}`).then(() => { }),
       () => mockStore.deleteUser(id)
     );
   },
@@ -303,7 +326,7 @@ export const taskApi = {
   },
   deleteTask: async (id: number): Promise<void> => {
     return safeCall(
-      () => apiClient.delete(`/tasks/${id}`).then(() => {}),
+      () => apiClient.delete(`/tasks/${id}`).then(() => { }),
       () => mockStore.deleteTask(id)
     );
   },
@@ -327,7 +350,7 @@ export const taskApi = {
   },
   deleteChecklistItem: async (itemId: number): Promise<void> => {
     return safeCall(
-      () => apiClient.delete(`/tasks/checklist/${itemId}`).then(() => {}),
+      () => apiClient.delete(`/tasks/checklist/${itemId}`).then(() => { }),
       () => mockStore.deleteChecklistItem(itemId)
     );
   },
@@ -496,7 +519,7 @@ export const meetingApi = {
           meetingLink: data.meetingUrl || 'https://meet.google.com/team-crm',
           organizerId: 1,
           organizerName: 'Payal Jadhao',
-          attendeeNames: ['Payal Jadhao', 'Jayshree Jadhao'],
+          attendeeNames: ['Payal Jadhao'],
           createdAt: new Date().toISOString()
         };
         meetings.push(m);
@@ -530,7 +553,7 @@ export const meetingApi = {
   },
   deleteMeeting: async (id: number): Promise<void> => {
     return safeCall(
-      () => apiClient.delete(`/meetings/${id}`).then(() => {}),
+      () => apiClient.delete(`/meetings/${id}`).then(() => { }),
       () => {
         const meetings = mockStore.getMeetings().filter((m) => m.id !== id);
         localStorage.setItem('teamcrm_store_meetings', JSON.stringify(meetings));
@@ -673,14 +696,14 @@ export const notificationApi = {
   },
   markAsRead: async (id: number): Promise<void> => {
     return safeCall(
-      () => apiClient.patch(`/notifications/${id}/read`).then(() => {}),
-      () => {}
+      () => apiClient.patch(`/notifications/${id}/read`).then(() => { }),
+      () => { }
     );
   },
   markAllAsRead: async (): Promise<void> => {
     return safeCall(
-      () => apiClient.patch('/notifications/read-all').then(() => {}),
-      () => {}
+      () => apiClient.patch('/notifications/read-all').then(() => { }),
+      () => { }
     );
   },
 };
@@ -701,7 +724,6 @@ export const aiApi = {
     const rawQuery = content || prompt || '';
     const effectiveKey = apiKey || localStorage.getItem('teamcrm_gemini_api_key') || '';
 
-    // If client has a Gemini API key, try calling Google Generative Language API directly
     if (effectiveKey && effectiveKey.trim().length > 10) {
       try {
         const geminiRes = await fetch(
@@ -730,7 +752,6 @@ export const aiApi = {
       }
     }
 
-    // Try backend API call with high 60s timeout to avoid premature client aborts
     return safeCall(
       () => apiClient.post('/ai/generate', { contextType, content, prompt, apiKey: effectiveKey }, { timeout: 60000 }).then((r) => r.data),
       async () => {
@@ -744,18 +765,11 @@ export const aiApi = {
             ]
           };
         }
-        // Try live LLM call directly from client
         const liveAiText = await callLiveLlmDirect(rawQuery);
         if (liveAiText) {
-          return {
-            result: liveAiText,
-            items: []
-          };
+          return { result: liveAiText, items: [] };
         }
-        return {
-          result: generateChatbotResponse(rawQuery),
-          items: []
-        };
+        return { result: generateChatbotResponse(rawQuery), items: [] };
       }
     );
   },
@@ -775,24 +789,18 @@ async function callLiveLlmDirect(userQuery: string): Promise<string | null> {
               role: 'system',
               content: 'You are Gemini AI Chatbot, an intelligent and helpful AI assistant for TeamCRM. Answer questions naturally, conversationally, and informatively in English with clean GitHub Markdown. When asked about a sprint task, write a comprehensive, customized technical elaboration specific to that task.'
             },
-            {
-              role: 'user',
-              content: userQuery
-            }
+            { role: 'user', content: userQuery }
           ],
           model
         })
       });
       if (res.ok) {
         const text = await res.text();
-        if (text && text.trim().length > 0) {
-          return text.trim();
-        }
+        if (text && text.trim().length > 0) return text.trim();
       }
-    } catch {}
+    } catch { }
   }
 
-  // Fast GET fallback
   for (const model of models) {
     try {
       const getRes = await fetch(`https://text.pollinations.ai/${encodeURIComponent(userQuery)}?model=${model}`);
@@ -800,7 +808,7 @@ async function callLiveLlmDirect(userQuery: string): Promise<string | null> {
         const text = await getRes.text();
         if (text && text.trim().length > 0) return text.trim();
       }
-    } catch {}
+    } catch { }
   }
   return null;
 }

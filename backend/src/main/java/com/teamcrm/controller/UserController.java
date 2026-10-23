@@ -34,7 +34,7 @@ public class UserController {
     }
 
     @PostMapping
-    @PreAuthorize("hasAuthority('USER_CREATE') or hasRole('ADMIN') or hasRole('MANAGER')")
+    @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<UserProfileDto> createUser(
             @AuthenticationPrincipal UserDetailsImpl currentUser,
             @Valid @RequestBody CreateUserRequest request) {
@@ -42,7 +42,7 @@ public class UserController {
     }
 
     @PutMapping("/{id}")
-    @PreAuthorize("hasAuthority('USER_CREATE') or hasRole('ADMIN') or hasRole('MANAGER')")
+    @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<UserProfileDto> updateUser(
             @PathVariable Long id,
             @AuthenticationPrincipal UserDetailsImpl currentUser,
@@ -51,7 +51,7 @@ public class UserController {
     }
 
     @DeleteMapping("/{id}")
-    @PreAuthorize("hasAuthority('USER_DEACTIVATE') or hasRole('ADMIN') or hasRole('MANAGER')")
+    @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<?> deleteUser(
             @PathVariable Long id,
             @AuthenticationPrincipal UserDetailsImpl currentUser) {
@@ -60,7 +60,7 @@ public class UserController {
     }
 
     @PatchMapping("/{id}/toggle-status")
-    @PreAuthorize("hasAuthority('USER_DEACTIVATE') or hasRole('ADMIN') or hasRole('MANAGER')")
+    @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<?> toggleUserStatus(
             @PathVariable Long id,
             @AuthenticationPrincipal UserDetailsImpl currentUser) {
@@ -69,7 +69,7 @@ public class UserController {
     }
 
     @PutMapping("/{id}/permissions")
-    @PreAuthorize("hasAuthority('ROLE_MANAGE') or hasRole('ADMIN') or hasRole('MANAGER')")
+    @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<?> updateUserPermissions(
             @PathVariable Long id,
             @RequestBody UpdateUserPermissionsRequest request,
