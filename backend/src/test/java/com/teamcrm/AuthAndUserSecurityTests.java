@@ -25,6 +25,8 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.web.server.ResponseStatusException;
 
+import com.google.api.client.googleapis.auth.oauth2.GoogleIdToken;
+import com.google.api.client.googleapis.auth.oauth2.GoogleIdTokenVerifier;
 import java.lang.reflect.Field;
 import java.util.List;
 import java.util.Map;
@@ -66,6 +68,9 @@ public class AuthAndUserSecurityTests {
     @MockBean
     private JavaMailSender mailSender;
 
+    @MockBean
+    private GoogleIdTokenVerifier googleIdTokenVerifier;
+
     private String adminToken;
     private String employeeToken;
     private String managerToken;
@@ -79,6 +84,17 @@ public class AuthAndUserSecurityTests {
                 userRepository.delete(u);
             }
         }
+
+        // Mock Google token verifier
+        when(googleIdTokenVerifier.verify(anyString())).thenAnswer(invocation -> {
+            String token = invocation.getArgument(0);
+            GoogleIdToken.Payload payload = new GoogleIdToken.Payload();
+            payload.setEmail(token);
+            payload.setEmailVerified(true);
+            GoogleIdToken mockToken = mock(GoogleIdToken.class);
+            when(mockToken.getPayload()).thenReturn(payload);
+            return mockToken;
+        });
 
         // Reset super admin password and active status
         User admin = userRepository.findByEmail("payaldjadhao@gmail.com").orElse(null);
@@ -236,13 +252,13 @@ public class AuthAndUserSecurityTests {
         String unregisteredEmail = "random.visitor99@gmail.com";
         assertFalse(userRepository.existsByEmail(unregisteredEmail));
 
-        GoogleLoginRequest req = new GoogleLoginRequest(unregisteredEmail, "Random Visitor", "fake-token");
+        GoogleLoginRequest req = new GoogleLoginRequest(unregisteredEmail);
 
         ResponseStatusException ex = assertThrows(ResponseStatusException.class, () -> {
             authService.loginWithGoogle(req);
         });
 
-        assertEquals(HttpStatus.UNAUTHORIZED, ex.getStatusCode());
+        assertEquals(HttpStatus.FORBIDDEN, ex.getStatusCode());
         assertEquals("This email is not registered. Contact admin.", ex.getReason());
 
         // Verify NO database record was created
@@ -261,7 +277,7 @@ public class AuthAndUserSecurityTests {
         employee.setIsActive(true);
         userRepository.save(employee);
 
-        GoogleLoginRequest req = new GoogleLoginRequest("pre.employee@gmail.com", "Pre Employee", "fake-token");
+        GoogleLoginRequest req = new GoogleLoginRequest("pre.employee@gmail.com");
         AuthResponse res = authService.loginWithGoogle(req);
 
         assertNotNull(res.accessToken());
@@ -281,7 +297,7 @@ public class AuthAndUserSecurityTests {
         manager.setIsActive(true);
         userRepository.save(manager);
 
-        GoogleLoginRequest req = new GoogleLoginRequest("pre.manager@gmail.com", "Pre Manager", "fake-token");
+        GoogleLoginRequest req = new GoogleLoginRequest("pre.manager@gmail.com");
         AuthResponse res = authService.loginWithGoogle(req);
 
         assertNotNull(res.accessToken());
@@ -293,13 +309,13 @@ public class AuthAndUserSecurityTests {
     @DisplayName("8. A second Google account is not automatically assigned the EMPLOYEE role")
     void test8_secondGoogleAccountNotAutoAssignedEmployeeRole() {
         String secondEmail = "stranger.google@gmail.com";
-        GoogleLoginRequest req = new GoogleLoginRequest(secondEmail, "Stranger", "fake-token");
+        GoogleLoginRequest req = new GoogleLoginRequest(secondEmail);
 
         ResponseStatusException ex = assertThrows(ResponseStatusException.class, () -> {
             authService.loginWithGoogle(req);
         });
 
-        assertEquals(HttpStatus.UNAUTHORIZED, ex.getStatusCode());
+        assertEquals(HttpStatus.FORBIDDEN, ex.getStatusCode());
         assertEquals("This email is not registered. Contact admin.", ex.getReason());
         assertFalse(userRepository.existsByEmail(secondEmail));
     }
@@ -317,7 +333,7 @@ public class AuthAndUserSecurityTests {
         userRepository.save(disabledUser);
 
         // Google login attempt
-        GoogleLoginRequest googleReq = new GoogleLoginRequest("disabled.account@teamcrm.com", "Disabled Account", "fake-token");
+        GoogleLoginRequest googleReq = new GoogleLoginRequest("disabled.account@teamcrm.com");
         ResponseStatusException ex = assertThrows(ResponseStatusException.class, () -> {
             authService.loginWithGoogle(googleReq);
         });

@@ -6,7 +6,7 @@ interface AuthContextType {
   user: User | null;
   token: string | null;
   login: (email: string, pass: string) => Promise<AuthResponse>;
-  loginWithGoogle: (email: string, fullName?: string) => Promise<AuthResponse>;
+  loginWithGoogle: (googleToken: string) => Promise<AuthResponse>;
   logout: () => void;
   refreshProfile: () => Promise<void>;
   hasPermission: (permissionCode: string) => boolean;
@@ -77,8 +77,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return res;
   };
 
-  const loginWithGoogle = async (email: string, fullName?: string): Promise<AuthResponse> => {
-    const res = await authApi.loginWithGoogle(email, fullName);
+  const loginWithGoogle = async (googleToken: string): Promise<AuthResponse> => {
+    const res = await authApi.loginWithGoogle(googleToken);
     setToken(res.accessToken);
     sessionStorage.setItem('teamcrm_token', res.accessToken);
     sessionStorage.setItem('teamcrm_refresh_token', res.refreshToken);

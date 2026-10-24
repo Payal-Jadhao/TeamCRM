@@ -88,8 +88,6 @@ public class AuthDtos {
     ) {}
 
     public record GoogleLoginRequest(
-            @NotBlank @Email String email,
-            String fullName,
-            String googleToken
+            @NotBlank String googleToken
     ) {}
 }

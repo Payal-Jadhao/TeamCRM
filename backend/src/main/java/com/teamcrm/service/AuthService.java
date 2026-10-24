@@ -18,6 +18,10 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
+import com.google.api.client.googleapis.auth.oauth2.GoogleIdToken;
+import com.google.api.client.googleapis.auth.oauth2.GoogleIdTokenVerifier;
+import java.io.IOException;
+import java.security.GeneralSecurityException;
 import java.security.SecureRandom;
 import java.time.Duration;
 import java.time.Instant;
@@ -43,19 +47,22 @@ public class AuthService {
     private final PasswordEncoder passwordEncoder;
     private final JwtUtils jwtUtils;
     private final EmailService emailService;
+    private final GoogleIdTokenVerifier googleIdTokenVerifier;
 
     public AuthService(AuthenticationManager authenticationManager,
                        UserRepository userRepository,
                        RoleRepository roleRepository,
                        PasswordEncoder passwordEncoder,
                        JwtUtils jwtUtils,
-                       EmailService emailService) {
+                       EmailService emailService,
+                       GoogleIdTokenVerifier googleIdTokenVerifier) {
         this.authenticationManager = authenticationManager;
         this.userRepository = userRepository;
         this.roleRepository = roleRepository;
         this.passwordEncoder = passwordEncoder;
         this.jwtUtils = jwtUtils;
         this.emailService = emailService;
+        this.googleIdTokenVerifier = googleIdTokenVerifier;
     }
 
     public AuthResponse login(LoginRequest request) {
@@ -128,7 +135,7 @@ public class AuthService {
                 user.getIsActive(),
                 user.getIsFirstLogin(),
                 permissions,
-                user.getInitialPassword() != null ? user.getInitialPassword() : "••••••"
+                null
         );
     }
 
@@ -208,11 +215,27 @@ public class AuthService {
     }
 
     public AuthResponse loginWithGoogle(GoogleLoginRequest request) {
-        String email = request.email().toLowerCase().trim();
+        // 0. Google token verify (signature, expiry, audience = client id)
+        GoogleIdToken idToken;
+        try {
+            idToken = googleIdTokenVerifier.verify(request.googleToken());
+        } catch (GeneralSecurityException | IOException e) {
+            log.error("Google token verification error: {}", e.getMessage());
+            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Could not verify Google token.");
+        }
+        if (idToken == null) {
+            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Invalid Google token.");
+        }
 
-        // 1. Must be pre-registered in the database. Never auto-create.
+        GoogleIdToken.Payload payload = idToken.getPayload();
+        if (!Boolean.TRUE.equals(payload.getEmailVerified())) {
+            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Google email is not verified.");
+        }
+        String email = payload.getEmail().toLowerCase().trim();
+
+        // 1. Admin ne register kiya hai? Warna 403 (401 sirf invalid token ke liye)
         User user = userRepository.findByEmail(email)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.UNAUTHORIZED, 
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.FORBIDDEN, 
                         "This email is not registered. Contact admin."));
 
         // 2. Must be active

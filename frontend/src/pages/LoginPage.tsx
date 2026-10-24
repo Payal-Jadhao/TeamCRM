@@ -1,9 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { authApi } from '../services/api';
-import { Lock, Mail, ArrowRight, ShieldCheck, Key, X, CheckCircle2, AlertTriangle, User } from 'lucide-react';
-
-import { googleAuthService, GoogleAccountItem } from '../services/googleAuthService';
+import { Lock, Mail, ArrowRight, ShieldCheck, Key, X, CheckCircle2, AlertTriangle } from 'lucide-react';
+import { GoogleLogin, CredentialResponse } from '@react-oauth/google';
 
 export const LoginPage: React.FC = () => {
   const { login, loginWithGoogle } = useAuth();
@@ -32,20 +31,9 @@ export const LoginPage: React.FC = () => {
   const [forgotError, setForgotError] = useState('');
   const [forgotSuccess, setForgotSuccess] = useState('');
 
-  // Google OAuth modal state
-  const [isGoogleModalOpen, setIsGoogleModalOpen] = useState(false);
-  const [googleCustomEmail, setGoogleCustomEmail] = useState('');
+  // Google OAuth state
   const [googleLoading, setGoogleLoading] = useState(false);
-  const [showCustomGoogleInput, setShowCustomGoogleInput] = useState(false);
-  const [dynamicGoogleAccounts, setDynamicGoogleAccounts] = useState<GoogleAccountItem[]>(() => googleAuthService.getStoredDeviceAccounts());
-
-  // Dynamically load Google accounts on modal open via googleAuthService
-  useEffect(() => {
-    if (!isGoogleModalOpen) return;
-    googleAuthService.getDynamicAccounts().then((accounts) => {
-      setDynamicGoogleAccounts(accounts);
-    });
-  }, [isGoogleModalOpen]);
+  const [lastAttemptedGoogleEmail, setLastAttemptedGoogleEmail] = useState('');
 
   // Check URL params for OAuth failure redirect
   useEffect(() => {
@@ -81,29 +69,34 @@ export const LoginPage: React.FC = () => {
     }
   };
 
-  // Google Login Execute
-  const handleGoogleLogin = async (selectedEmail: string, fullName?: string) => {
+  // Sirf display ke liye email nikalna (security yahan nahi, backend mein hai)
+  const getEmailFromJwt = (jwt: string): string => {
+    try {
+      return JSON.parse(atob(jwt.split('.')[1].replace(/-/g, '+').replace(/_/g, '/'))).email || '';
+    } catch {
+      return '';
+    }
+  };
+
+  const handleGoogleSuccess = async (cred: CredentialResponse) => {
+    if (!cred.credential) {
+      setError('Google sign-in failed. Please try again.');
+      return;
+    }
     setGoogleLoading(true);
     setError('');
-    const cleanEmail = selectedEmail.trim().toLowerCase();
+    setLastAttemptedGoogleEmail(getEmailFromJwt(cred.credential));
+
     try {
-      await loginWithGoogle(cleanEmail, fullName);
-      setIsGoogleModalOpen(false);
+      await loginWithGoogle(cred.credential);
       window.location.href = '/';
     } catch (err: any) {
-      console.warn('Google login failed:', err);
-      const errMsg: string = err.response?.data?.message || err.message || '';
-      setIsGoogleModalOpen(false);
-      if (
-        errMsg.toLowerCase().includes('not registered') ||
-        errMsg.toLowerCase().includes('contact admin') ||
-        errMsg.toLowerCase().includes('does not exist') ||
-        err?.response?.status === 401 ||
-        err?.response?.status === 404
-      ) {
-        setIsUnregisteredPopupOpen(true);
+      const status = err?.response?.status;
+      const msg: string = err.response?.data?.message || err.message || '';
+      if (status === 403 && msg.toLowerCase().includes('not registered')) {
+        setIsUnregisteredPopupOpen(true); // "Your email is not registered"
       } else {
-        setError(errMsg || 'Authentication failed. Please try again.');
+        setError(msg || 'Authentication failed. Please try again.');
       }
     } finally {
       setGoogleLoading(false);
@@ -398,31 +391,18 @@ export const LoginPage: React.FC = () => {
             </div>
 
             {/* Google OAuth Button */}
-            <button
-              type="button"
-              onClick={() => setIsGoogleModalOpen(true)}
-              className="w-full py-2.5 bg-white hover:bg-gray-50 text-gray-700 text-sm font-medium rounded-lg border border-gray-300 shadow-xs transition-all flex items-center justify-center gap-3"
-            >
-              <svg className="w-4 h-4" viewBox="0 0 24 24">
-                <path
-                  fill="#4285F4"
-                  d="M23.745 12.27c0-.7-.06-1.4-.19-2.07H12v4.51h6.6c-.29 1.52-1.14 2.82-2.4 3.68v3.05h3.88c2.27-2.09 3.665-5.17 3.665-9.17z"
-                />
-                <path
-                  fill="#34A853"
-                  d="M12 24c3.24 0 5.95-1.08 7.93-2.91l-3.88-3.05c-1.08.72-2.45 1.16-4.05 1.16-3.12 0-5.77-2.1-6.72-4.93H1.25v3.15C3.26 21.36 7.33 24 12 24z"
-                />
-                <path
-                  fill="#FBBC05"
-                  d="M5.28 14.27c-.25-.72-.38-1.49-.38-2.27s.13-1.55.38-2.27V6.58H1.25C.45 8.18 0 9.99 0 12s.45 3.82 1.25 5.42l4.03-3.15z"
-                />
-                <path
-                  fill="#EA4335"
-                  d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C17.95 1.19 15.24 0 12 0 7.33 0 3.26 2.64 1.25 6.58l4.03 3.15c.95-2.83 3.6-4.98 6.72-4.98z"
-                />
-              </svg>
-              <span>Continue with Google</span>
-            </button>
+            <div className="flex justify-center">
+              <GoogleLogin
+                onSuccess={handleGoogleSuccess}
+                onError={() => setError('Google sign-in failed. Please try again.')}
+                theme="outline"
+                size="large"
+                text="continue_with"
+                width="352"
+                useOneTap={false}
+                auto_select={false}
+              />
+            </div>
           </form>
         )}
 
@@ -620,175 +600,6 @@ export const LoginPage: React.FC = () => {
         </div>
       )}
 
-      {/* Google OAuth Account Chooser Modal */}
-      {isGoogleModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-xs p-4 animate-in fade-in duration-150">
-          <div className="bg-white rounded-3xl shadow-2xl border border-gray-200 max-w-[420px] w-full p-7 animate-in zoom-in-95 duration-200 relative overflow-hidden">
-            {googleLoading && (
-              <div className="absolute top-0 left-0 right-0 h-1 bg-blue-100 overflow-hidden">
-                <div className="h-full bg-[#1a73e8] animate-pulse w-full"></div>
-              </div>
-            )}
-
-            {/* Google Header */}
-            <div className="flex items-center justify-between pb-3 mb-3 border-b border-gray-100">
-              <div className="flex items-center gap-2">
-                <svg className="w-4 h-4" viewBox="0 0 24 24">
-                  <path
-                    fill="#4285F4"
-                    d="M23.745 12.27c0-.7-.06-1.4-.19-2.07H12v4.51h6.6c-.29 1.52-1.14 2.82-2.4 3.68v3.05h3.88c2.27-2.09 3.665-5.17 3.665-9.17z"
-                  />
-                  <path
-                    fill="#34A853"
-                    d="M12 24c3.24 0 5.95-1.08 7.93-2.91l-3.88-3.05c-1.08.72-2.45 1.16-4.05 1.16-3.12 0-5.77-2.1-6.72-4.93H1.25v3.15C3.26 21.36 7.33 24 12 24z"
-                  />
-                  <path
-                    fill="#FBBC05"
-                    d="M5.28 14.27c-.25-.72-.38-1.49-.38-2.27s.13-1.55.38-2.27V6.58H1.25C.45 8.18 0 9.99 0 12s.45 3.82 1.25 5.42l4.03-3.15z"
-                  />
-                  <path
-                    fill="#EA4335"
-                    d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C17.95 1.19 15.24 0 12 0 7.33 0 3.26 2.64 1.25 6.58l4.03 3.15c.95-2.83 3.6-4.98 6.72-4.98z"
-                  />
-                </svg>
-                <span className="text-xs font-medium text-gray-700">Sign in with Google</span>
-              </div>
-              <button
-                type="button"
-                onClick={() => {
-                  setIsGoogleModalOpen(false);
-                  setShowCustomGoogleInput(false);
-                }}
-                className="text-gray-400 hover:text-gray-700 transition-colors p-1 rounded-full hover:bg-gray-100 cursor-pointer"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-
-            {/* App Branding */}
-            <div className="mt-2 mb-5">
-              <div className="w-12 h-12 rounded-2xl bg-[#7c3aed] flex items-center justify-center text-white shadow-sm mb-4">
-                <span className="font-extrabold text-xl tracking-tight">T</span>
-              </div>
-
-              <h2 className="text-[22px] font-normal text-[#202124] tracking-tight leading-snug">
-                Choose an account
-              </h2>
-              <p className="text-sm text-[#5f6368] mt-0.5">
-                to continue to <span className="text-[#1a73e8] font-medium">TeamCRM</span>
-              </p>
-            </div>
-
-            {/* Account List */}
-            {!showCustomGoogleInput ? (
-              <div className="border-t border-gray-200">
-                {dynamicGoogleAccounts.map((acc) => (
-                  <button
-                    key={acc.email}
-                    type="button"
-                    disabled={googleLoading}
-                    onClick={() => handleGoogleLogin(acc.email, acc.name)}
-                    className="w-full text-left flex items-center gap-3.5 py-3.5 px-2 hover:bg-gray-50/80 transition-colors border-b border-gray-200 cursor-pointer disabled:opacity-50"
-                  >
-                    <div
-                      className="w-8 h-8 rounded-full text-white flex items-center justify-center font-medium text-sm shrink-0"
-                      style={{ backgroundColor: acc.avatarColor }}
-                    >
-                      {acc.name.charAt(0).toUpperCase()}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium text-[#202124] truncate">{acc.name}</p>
-                      <p className="text-xs text-[#5f6368] truncate">{acc.email}</p>
-                    </div>
-                  </button>
-                ))}
-
-                {/* Use Another Account */}
-                <button
-                  type="button"
-                  disabled={googleLoading}
-                  onClick={() => setShowCustomGoogleInput(true)}
-                  className="w-full text-left flex items-center gap-3.5 py-3.5 px-2 hover:bg-gray-50/80 transition-colors border-b border-gray-200 cursor-pointer disabled:opacity-50"
-                >
-                  <div className="w-8 h-8 rounded-full border border-gray-300 flex items-center justify-center text-gray-600 shrink-0">
-                    <User className="w-4 h-4 text-gray-600" />
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium text-[#202124]">Use another account</p>
-                  </div>
-                </button>
-              </div>
-            ) : (
-              <form
-                onSubmit={(e) => {
-                  e.preventDefault();
-                  const clean = googleCustomEmail.trim().toLowerCase();
-                  if (clean) {
-                    googleAuthService.rememberAccount(clean);
-                    googleAuthService.getDynamicAccounts().then(setDynamicGoogleAccounts);
-                    handleGoogleLogin(clean);
-                  }
-                }}
-                className="mt-4 space-y-4"
-              >
-                <div>
-                  <label className="block text-xs font-medium text-[#202124] mb-1.5">
-                    Email or phone
-                  </label>
-                  <input
-                    type="email"
-                    required
-                    autoFocus
-                    value={googleCustomEmail}
-                    onChange={(e) => setGoogleCustomEmail(e.target.value)}
-                    placeholder="Enter your Google email"
-                    className="w-full px-3.5 py-2.5 text-sm text-[#202124] rounded-lg border border-gray-300 focus:border-[#1a73e8] focus:ring-1 focus:ring-[#1a73e8] outline-none transition-all"
-                  />
-                </div>
-
-                <div className="flex items-center justify-between pt-2">
-                  <button
-                    type="button"
-                    onClick={() => setShowCustomGoogleInput(false)}
-                    className="text-xs font-medium text-[#1a73e8] hover:underline cursor-pointer"
-                  >
-                    Back to accounts
-                  </button>
-                  <button
-                    type="submit"
-                    disabled={googleLoading || !googleCustomEmail.trim()}
-                    className="px-6 py-2 bg-[#1a73e8] hover:bg-[#1557b0] text-white text-xs font-semibold rounded-full shadow-xs transition-all disabled:opacity-50 cursor-pointer"
-                  >
-                    Next
-                  </button>
-                </div>
-              </form>
-            )}
-
-            {/* Privacy Policy & Terms */}
-            <p className="text-[12px] text-[#5f6368] mt-6 leading-relaxed">
-              Before using this app, you can review TeamCRM's{' '}
-              <span className="text-[#1a73e8] hover:underline cursor-pointer">Privacy Policy</span>{' '}
-              and{' '}
-              <span className="text-[#1a73e8] hover:underline cursor-pointer">Terms of Service</span>.
-            </p>
-
-            {/* Google Footer */}
-            <div className="mt-7 pt-3 border-t border-gray-100 flex items-center justify-between text-[11px] text-[#5f6368]">
-              <div className="flex items-center gap-1 cursor-pointer hover:text-gray-900">
-                <span>English (United States)</span>
-                <span className="text-[8px]">▼</span>
-              </div>
-              <div className="flex items-center gap-4">
-                <span className="hover:text-gray-900 cursor-pointer">Help</span>
-                <span className="hover:text-gray-900 cursor-pointer">Privacy</span>
-                <span className="hover:text-gray-900 cursor-pointer">Terms</span>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
       {/* Unregistered Google Email Dialog Popup */}
       {isUnregisteredPopupOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/55 backdrop-blur-xs p-4 animate-in fade-in duration-150">
@@ -807,17 +618,32 @@ export const LoginPage: React.FC = () => {
 
             <h3 className="text-base font-bold text-gray-900 mb-2">Access Denied</h3>
 
-            <p className="text-sm font-semibold text-gray-700 leading-relaxed mb-6">
+            <p className="text-sm font-semibold text-gray-700 leading-relaxed mb-2">
               Your email is not registered. Contact admin.
             </p>
 
-            <button
-              type="button"
-              onClick={() => setIsUnregisteredPopupOpen(false)}
-              className="w-full py-2.5 bg-primary hover:bg-primary-hover text-white text-xs font-bold rounded-xl shadow-xs transition-colors cursor-pointer"
-            >
-              OK
-            </button>
+            {lastAttemptedGoogleEmail && (
+              <p className="text-xs text-gray-500 font-mono mb-6 bg-gray-50 py-1.5 px-3 rounded-lg border border-gray-100 inline-block max-w-full truncate">
+                {lastAttemptedGoogleEmail}
+              </p>
+            )}
+
+            <div className="flex flex-col gap-2">
+              <button
+                type="button"
+                onClick={() => setIsUnregisteredPopupOpen(false)}
+                className="w-full py-2.5 bg-primary hover:bg-primary-hover text-white text-xs font-bold rounded-xl shadow-xs transition-colors cursor-pointer"
+              >
+                Try another email
+              </button>
+              <button
+                type="button"
+                onClick={() => setIsUnregisteredPopupOpen(false)}
+                className="w-full py-2 text-gray-500 hover:text-gray-700 text-xs font-semibold rounded-xl hover:bg-gray-100 transition-colors cursor-pointer"
+              >
+                Close
+              </button>
+            </div>
           </div>
         </div>
       )}

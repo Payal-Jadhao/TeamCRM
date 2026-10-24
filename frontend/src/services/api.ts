@@ -229,32 +229,11 @@ export const authApi = {
       { strict: true }
     );
   },
-  loginWithGoogle: async (email: string, fullName?: string, googleToken?: string): Promise<AuthResponse> => {
+  loginWithGoogle: async (googleToken: string): Promise<AuthResponse> => {
     return safeCall(
-      () => apiClient.post<AuthResponse>('/auth/google', { email, fullName, googleToken }).then((res) => res.data),
-      () => {
-        const users = mockStore.getUsers();
-        const found = users.find((u) => u.email.toLowerCase() === email.trim().toLowerCase());
-        if (!found) {
-          throw new Error('Your email is not registered. Contact admin.');
-        }
-        if (!found.isActive) {
-          throw new Error('Your TeamCRM account has been deactivated. Please contact your administrator.');
-        }
-        return {
-          accessToken: 'mock_google_token_' + Date.now(),
-          refreshToken: 'mock_google_refresh_' + Date.now(),
-          tokenType: 'Bearer',
-          userId: found.id || 1,
-          email: found.email,
-          fullName: found.fullName,
-          role: found.roleName,
-          teamTag: found.teamTag,
-          isFirstLogin: false,
-          permissions: found.permissions || ['ROLE_EMPLOYEE'],
-        };
-      },
-      { strict: true, msg401: 'Your email is not registered. Contact admin.' }
+      () => apiClient.post<AuthResponse>('/auth/google', { googleToken }).then((res) => res.data),
+      () => { throw new Error('Google login requires the backend server.'); },
+      { strict: true }
     );
   },
 };
