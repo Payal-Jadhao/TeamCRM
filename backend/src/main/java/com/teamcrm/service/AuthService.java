@@ -23,6 +23,7 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.HashSet;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
@@ -133,50 +134,33 @@ public class AuthService {
 
     public SendOtpResponse sendForgotPasswordOtp(SendOtpRequest request) {
         String email = request.email().toLowerCase().trim();
-        User user = userRepository.findByEmail(email)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, 
-                        "Your email is not registered. Contact admin."));
+        Optional<User> userOpt = userRepository.findByEmail(email);
 
-        if (user.getIsActive() != null && !user.getIsActive()) {
-            throw new ResponseStatusException(HttpStatus.FORBIDDEN, 
-                    "Your account has been deactivated. Please contact your administrator.");
+        if (userOpt.isPresent() && Boolean.TRUE.equals(userOpt.get().getIsActive())) {
+            // Resend cooldown: 60 seconds
+            OtpEntry existing = otpCache.get(email);
+            if (existing != null && Instant.now().isBefore(existing.createdAt().plusSeconds(60))) {
+                long remaining = Duration.between(Instant.now(), existing.createdAt().plusSeconds(60)).getSeconds();
+                throw new ResponseStatusException(HttpStatus.TOO_MANY_REQUESTS, 
+                        "Please wait " + Math.max(1, remaining) + " seconds before requesting a new verification code.");
+            }
+
+            // Cryptographically secure 6-digit OTP
+            int code = 100000 + secureRandom.nextInt(900000);
+            String otp = String.valueOf(code);
+
+            // Store with 10-minute validity, initialized with 0 failed attempts
+            otpCache.put(email, new OtpEntry(otp, Instant.now().plus(Duration.ofMinutes(10)), Instant.now(), 0));
+
+            // Dispatch email via Brevo / Resend / SMTP
+            try {
+                emailService.sendOtpEmail(email, otp);
+            } catch (Exception e) {
+                log.warn("Email service dispatch error: {}", e.getMessage());
+            }
         }
 
-        // Resend cooldown: 60 seconds
-        OtpEntry existing = otpCache.get(email);
-        if (existing != null && Instant.now().isBefore(existing.createdAt().plusSeconds(60))) {
-            long remaining = Duration.between(Instant.now(), existing.createdAt().plusSeconds(60)).getSeconds();
-            throw new ResponseStatusException(HttpStatus.TOO_MANY_REQUESTS, 
-                    "Please wait " + Math.max(1, remaining) + " seconds before requesting a new verification code.");
-        }
-
-        // Cryptographically secure 6-digit OTP
-        int code = 100000 + secureRandom.nextInt(900000);
-        String otp = String.valueOf(code);
-
-        // Store with 10-minute validity, initialized with 0 failed attempts
-        otpCache.put(email, new OtpEntry(otp, Instant.now().plus(Duration.ofMinutes(10)), Instant.now(), 0));
-
-        // Dispatch email via JavaMailSender
-        boolean emailSent = false;
-        try {
-            emailService.sendOtpEmail(email, otp);
-            emailSent = true;
-        } catch (Exception e) {
-            log.warn("Gmail SMTP delivery not active: {}. Providing verification code fallback.", e.getMessage());
-        }
-
-        String msg;
-        String returnedOtp;
-        if (emailSent) {
-            msg = "A 6-digit verification code has been dispatched to your registered email. Please check your inbox.";
-            returnedOtp = null;
-        } else {
-            msg = "Verification code generated: " + otp + ". Please enter this 6-digit code below to set your new password.";
-            returnedOtp = otp;
-        }
-
-        return new SendOtpResponse(true, msg, returnedOtp);
+        return new SendOtpResponse(true, "If this email is registered, a 6-digit verification code has been dispatched to your inbox.", null);
     }
 
     @Transactional

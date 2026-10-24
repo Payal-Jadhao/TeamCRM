@@ -262,6 +262,24 @@ public class UserService {
         ));
     }
 
+    @Transactional
+    public void resetPassword(Long userId, String newPassword, Long actorId) {
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "User not found"));
+
+        String passwordToSet = (newPassword != null && !newPassword.trim().isBlank())
+                ? newPassword.trim() : "Welcome123!";
+        user.setPasswordHash(passwordEncoder.encode(passwordToSet));
+        user.setIsFirstLogin(true);
+        user.setUpdatedAt(Instant.now());
+        userRepository.save(user);
+
+        auditLogRepository.save(new AuditLog(
+                actorId, null, "USER_PASSWORD_RESET", "USER",
+                user.getId().toString(), null, "Password reset by administrator for " + user.getEmail()
+        ));
+    }
+
     public List<Permission> getAllPermissions() {
         return permissionRepository.findAll();
     }
@@ -296,7 +314,7 @@ public class UserService {
                 u.getIsActive(),
                 u.getIsFirstLogin(),
                 perms,
-                u.getInitialPassword() != null ? u.getInitialPassword() : (u.getEmail().equalsIgnoreCase(SUPER_ADMIN_EMAIL) ? "1234" : "••••••")
+                null
         );
     }
 }

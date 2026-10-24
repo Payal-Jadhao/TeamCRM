@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
-import { taskApi, timeApi, discussionApi, apiHandoffApi, aiApi, userApi } from '../services/api';
+import { taskApi, timeApi, discussionApi, apiHandoffApi, aiApi, userApi, projectApi } from '../services/api';
 import type {
   Task,
   ChecklistItem,
@@ -9,6 +9,7 @@ import type {
   ApiDoc,
   User,
   TaskStatus,
+  Project,
 } from '../types';
 import { StatusBadge, PriorityBadge, TeamTagChip } from '../components/ui/Badge';
 import { Modal } from '../components/ui/Modal';
@@ -33,12 +34,21 @@ import {
   Edit3,
   Trash2,
   Users,
+  Briefcase,
+  List,
+  LayoutGrid,
+  CheckCircle2,
+  ArrowRight,
+  ExternalLink,
+  ChevronRight,
 } from 'lucide-react';
 
 interface TasksPageProps {
   onScheduleMeeting: (task: Task) => void;
   selectedTaskId?: number | null;
   onClearSelectedTask?: () => void;
+  selectedProjectId?: number | null;
+  onSelectProject?: (projectId: number | null) => void;
   searchTerm?: string;
   onClearSearch?: () => void;
 }
@@ -47,15 +57,23 @@ export const TasksPage: React.FC<TasksPageProps> = ({
   onScheduleMeeting,
   selectedTaskId,
   onClearSelectedTask,
+  selectedProjectId,
+  onSelectProject,
   searchTerm,
   onClearSearch,
 }) => {
   const { user, hasPermission } = useAuth();
   const [tasks, setTasks] = useState<Task[]>([]);
   const [users, setUsers] = useState<User[]>([]);
+  const [projects, setProjects] = useState<Project[]>([]);
   const [loading, setLoading] = useState(true);
 
   // Filters
+  const [selectedProjectFilter, setSelectedProjectFilter] = useState<string>(
+    selectedProjectId ? String(selectedProjectId) : 'ALL'
+  );
+  const [viewMode, setViewMode] = useState<'table' | 'board'>('table');
+  const [activeStatusTab, setActiveStatusTab] = useState<'ALL' | TaskStatus>('ALL');
   const [filterAssignee, setFilterAssignee] = useState<string>('ALL');
   const [filterPriority, setFilterPriority] = useState<string>('ALL');
   const [filterType, setFilterType] = useState<string>('ALL');
@@ -80,6 +98,7 @@ export const TasksPage: React.FC<TasksPageProps> = ({
 
   // Create Task Modal State
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
+  const [newTaskProjectId, setNewTaskProjectId] = useState<number>(selectedProjectId || 1);
   const [newTaskTitle, setNewTaskTitle] = useState('');
   const [newTaskDesc, setNewTaskDesc] = useState('');
   const [newTaskType, setNewTaskType] = useState('FEATURE');
@@ -101,6 +120,7 @@ export const TasksPage: React.FC<TasksPageProps> = ({
   // Edit Task Modal State
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [editTaskId, setEditTaskId] = useState<number | null>(null);
+  const [editProjectId, setEditProjectId] = useState<number>(1);
   const [editTaskCode, setEditTaskCode] = useState<string>('');
   const [editTitle, setEditTitle] = useState('');
   const [editDesc, setEditDesc] = useState('');
@@ -118,22 +138,63 @@ export const TasksPage: React.FC<TasksPageProps> = ({
   const canDeleteTask = isAdminOrManager;
   const [taskToDelete, setTaskToDelete] = useState<Task | null>(null);
 
-  // Role-based assignee grouping:
-  // Admin can assign to: Managers and Employees (all users)
-  // Manager can assign to: Employees (and other managers)
-  const assignableUsers = users.filter((u) => {
+  // Accessible Projects based on user role
+  const accessibleProjects = projects.filter((p) => {
     if (user?.roleName === 'ROLE_ADMIN') return true;
     if (user?.roleName === 'ROLE_MANAGER') {
-      return u.roleName === 'ROLE_EMPLOYEE' || u.roleName === 'ROLE_MANAGER';
+      if (!p.managerIds || p.managerIds.length === 0) return true;
+      return p.managerIds.includes(user.id);
+    }
+    if (user?.roleName === 'ROLE_EMPLOYEE') {
+      if (!p.employeeIds || p.employeeIds.length === 0) return true;
+      return p.employeeIds.includes(user.id);
     }
     return true;
   });
-  const managersList = assignableUsers.filter((u) => u.roleName === 'ROLE_MANAGER');
-  const employeesList = assignableUsers.filter((u) => u.roleName === 'ROLE_EMPLOYEE' || u.roleName === 'ROLE_ADMIN');
+
+  // Dynamic assignees for New Task based on selected project
+  const currentNewTaskProject = projects.find((p) => p.id === newTaskProjectId) || accessibleProjects[0];
+  const assignableUsers = users.filter((u) => {
+    if (user?.roleName !== 'ROLE_ADMIN' && user?.roleName !== 'ROLE_MANAGER') return false;
+    // Admin is always selectable
+    if (u.roleName === 'ROLE_ADMIN') return true;
+    if (!currentNewTaskProject) return true;
+
+    const hasConfiguredMembers =
+      (currentNewTaskProject.managerIds && currentNewTaskProject.managerIds.length > 0) ||
+      (currentNewTaskProject.employeeIds && currentNewTaskProject.employeeIds.length > 0);
+
+    if (hasConfiguredMembers) {
+      const isMgr = currentNewTaskProject.managerIds?.includes(u.id);
+      const isEmp = currentNewTaskProject.employeeIds?.includes(u.id);
+      return isMgr || isEmp;
+    }
+    return true;
+  });
+
+  // Dynamic assignees for Edit Task based on edit project
+  const currentEditProject = projects.find((p) => p.id === editProjectId);
+  const editTaskAssignableUsers = users.filter((u) => {
+    if (user?.roleName !== 'ROLE_ADMIN' && user?.roleName !== 'ROLE_MANAGER') return false;
+    if (u.roleName === 'ROLE_ADMIN') return true;
+    if (!currentEditProject) return true;
+
+    const hasConfiguredMembers =
+      (currentEditProject.managerIds && currentEditProject.managerIds.length > 0) ||
+      (currentEditProject.employeeIds && currentEditProject.employeeIds.length > 0);
+
+    if (hasConfiguredMembers) {
+      const isMgr = currentEditProject.managerIds?.includes(u.id);
+      const isEmp = currentEditProject.employeeIds?.includes(u.id);
+      return isMgr || isEmp;
+    }
+    return true;
+  });
 
   const openEditModal = (t: Task) => {
     setActiveTask(t);
     setEditTaskId(t.id);
+    setEditProjectId(t.projectId || 1);
     setEditTaskCode(t.taskCode);
     setEditTitle(t.title);
     setEditDesc(t.description || '');
@@ -181,11 +242,15 @@ export const TasksPage: React.FC<TasksPageProps> = ({
         assigneeIdsParam = '';
       }
 
+      const targetProj = projects.find((p) => p.id === editProjectId);
+
       const updated = await taskApi.updateTask(targetId, {
         title: editTitle,
         description: editDesc,
         type: editType,
         priority: editPriority,
+        projectId: targetProj?.id,
+        projectName: targetProj?.name,
         assigneeId: primaryAssigneeId,
         assigneeIds: assigneeIdsParam,
         dueDate: editDueDate || undefined,
@@ -287,6 +352,13 @@ export const TasksPage: React.FC<TasksPageProps> = ({
   }, []);
 
   useEffect(() => {
+    if (selectedProjectId) {
+      setSelectedProjectFilter(String(selectedProjectId));
+      setNewTaskProjectId(selectedProjectId);
+    }
+  }, [selectedProjectId]);
+
+  useEffect(() => {
     if (selectedTaskId) {
       loadTaskDetails(selectedTaskId);
     }
@@ -295,12 +367,17 @@ export const TasksPage: React.FC<TasksPageProps> = ({
   const loadData = async () => {
     setLoading(true);
     try {
-      const [allTasks, allUsers] = await Promise.all([
+      const [allTasks, allUsers, allProjects] = await Promise.all([
         taskApi.getTasks(),
         userApi.getUsers(),
+        projectApi.getProjects(),
       ]);
       setTasks(allTasks);
       setUsers(allUsers);
+      setProjects(allProjects);
+      if (allProjects.length > 0 && !selectedProjectId) {
+        setNewTaskProjectId(allProjects[0].id);
+      }
     } catch (e) {
       console.error(e);
     } finally {
@@ -447,11 +524,15 @@ export const TasksPage: React.FC<TasksPageProps> = ({
         primaryAssigneeId = newTaskSelectedAssignees[0];
       }
 
+      const targetProj = projects.find((p) => p.id === newTaskProjectId) || accessibleProjects[0];
+
       const created = await taskApi.createTask({
         title: newTaskTitle,
         description: newTaskDesc,
         type: newTaskType,
         priority: newTaskPriority,
+        projectId: targetProj?.id,
+        projectName: targetProj?.name,
         assigneeId: primaryAssigneeId,
         assigneeIds: assigneeIdsParam,
         dueDate: newTaskDueDate || undefined,
@@ -470,12 +551,26 @@ export const TasksPage: React.FC<TasksPageProps> = ({
     }
   };
 
-  // Filter Tasks
+  // Base tasks for project & global permissions (used to compute status tab counts)
   const isEmployee = user?.roleName === 'ROLE_EMPLOYEE';
   const myId = user?.id;
 
-  const filteredTasks = tasks.filter((t) => {
-    // If logged in as Employee, ONLY show tasks assigned to me or assigned to ALL
+  const baseProjectTasks = tasks.filter((t) => {
+    // Project filter
+    if (selectedProjectFilter !== 'ALL') {
+      if (t.projectId && t.projectId !== Number(selectedProjectFilter)) {
+        return false;
+      }
+    } else {
+      if (user?.roleName !== 'ROLE_ADMIN') {
+        const allowedIds = accessibleProjects.map((p) => p.id);
+        if (t.projectId && !allowedIds.includes(t.projectId)) {
+          return false;
+        }
+      }
+    }
+
+    // Role-based visibility
     if (isEmployee) {
       const isAssignedToAll = t.assigneeIds === 'ALL' || t.assigneeNames === 'All Employees';
       const isDirectAssignee = myId != null && t.assigneeId === myId;
@@ -503,21 +598,30 @@ export const TasksPage: React.FC<TasksPageProps> = ({
     if (filterPriority !== 'ALL' && t.priority !== filterPriority) return false;
     if (filterType !== 'ALL' && t.type !== filterType) return false;
 
-    // Filter by Topbar search term across code, title, desc, assignee, type, priority, and status
+    // Search term
     if (searchTerm && searchTerm.trim() !== '') {
       const q = searchTerm.toLowerCase().trim();
       const codeMatch = t.taskCode?.toLowerCase().includes(q);
       const titleMatch = t.title?.toLowerCase().includes(q);
       const descMatch = t.description?.toLowerCase().includes(q);
       const assigneeMatch = (t.assigneeNames || t.assigneeName || '')?.toLowerCase().includes(q);
+      const projMatch = t.projectName?.toLowerCase().includes(q);
       const typeMatch = t.type?.toLowerCase().includes(q);
       const priorityMatch = t.priority?.toLowerCase().includes(q);
       const statusMatch = t.status?.toLowerCase().includes(q);
-      if (!codeMatch && !titleMatch && !descMatch && !assigneeMatch && !typeMatch && !priorityMatch && !statusMatch) {
+      if (!codeMatch && !titleMatch && !descMatch && !assigneeMatch && !projMatch && !typeMatch && !priorityMatch && !statusMatch) {
         return false;
       }
     }
 
+    return true;
+  });
+
+  // Tasks further filtered by Active Status Tab
+  const filteredTasks = baseProjectTasks.filter((t) => {
+    if (activeStatusTab !== 'ALL' && t.status !== activeStatusTab) {
+      return false;
+    }
     return true;
   });
 
@@ -527,6 +631,15 @@ export const TasksPage: React.FC<TasksPageProps> = ({
     { status: 'BLOCKED', label: 'Blocked', color: 'bg-rose-100 text-rose-700' },
     { status: 'REVIEW', label: 'Review', color: 'bg-amber-100 text-amber-700' },
     { status: 'DONE', label: 'Done', color: 'bg-emerald-100 text-emerald-700' },
+  ];
+
+  const statusTabItems = [
+    { key: 'ALL', label: 'All Tasks', count: baseProjectTasks.length },
+    { key: 'TODO', label: 'To Do', count: baseProjectTasks.filter((t) => t.status === 'TODO').length },
+    { key: 'IN_PROGRESS', label: 'In Progress', count: baseProjectTasks.filter((t) => t.status === 'IN_PROGRESS').length },
+    { key: 'REVIEW', label: 'Under Review', count: baseProjectTasks.filter((t) => t.status === 'REVIEW').length },
+    { key: 'DONE', label: 'Completed', count: baseProjectTasks.filter((t) => t.status === 'DONE').length },
+    { key: 'BLOCKED', label: 'Blocked', count: baseProjectTasks.filter((t) => t.status === 'BLOCKED').length },
   ];
 
   return (
@@ -545,78 +658,169 @@ export const TasksPage: React.FC<TasksPageProps> = ({
         </div>
       )}
 
-      {/* Top Filter & Action Bar */}
-      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 bg-white p-4 rounded-2xl border border-border-custom shadow-xs">
-        {/* Filters */}
+      {/* Top Filter & Project Selection Bar */}
+      <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-4 bg-white p-4 rounded-2xl border border-border-custom shadow-xs">
+        {/* Left Side: Project Dropdown and Field Filters */}
         <div className="flex flex-wrap items-center gap-3">
-          <div className="flex items-center gap-1.5 text-xs font-semibold text-text-secondary mr-1">
-            <Filter className="w-4 h-4 text-primary" />
-            <span>Filters:</span>
+          {/* Project Selector Dropdown */}
+          <div className="flex items-center gap-2 bg-purple-50 px-3 py-1.5 rounded-xl border border-purple-200">
+            <Briefcase className="w-4 h-4 text-primary shrink-0" />
+            <span className="text-xs font-bold text-text-primary">Project:</span>
+            <select
+              value={selectedProjectFilter}
+              onChange={(e) => {
+                const val = e.target.value;
+                setSelectedProjectFilter(val);
+                if (onSelectProject) {
+                  onSelectProject(val === 'ALL' ? null : Number(val));
+                }
+              }}
+              className="text-xs font-bold bg-white text-primary rounded-lg border border-purple-200 px-2 py-1 outline-none cursor-pointer focus:ring-1 focus:ring-primary"
+            >
+              <option value="ALL">
+                {user?.roleName === 'ROLE_ADMIN' ? 'All Projects (Global)' : 'All My Projects'}
+              </option>
+              {accessibleProjects.map((p) => (
+                <option key={p.id} value={String(p.id)}>
+                  [{p.keyCode}] {p.name}
+                </option>
+              ))}
+            </select>
           </div>
 
-          {user?.roleName === 'ROLE_EMPLOYEE' ? (
-            /* For Employee: Show selected employee email badge */
-            <div className="flex items-center gap-2 px-3 py-1.5 text-xs bg-purple-50 text-primary border border-purple-200 rounded-lg font-semibold shadow-xs">
-              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
-              <span>👤 {user?.email}</span>
-              <span className="text-[10px] bg-white px-2 py-0.5 rounded border border-purple-200 text-purple-700">
-                {user?.fullName} ({user?.teamTag || 'Backend'})
-              </span>
+          <div className="h-5 w-px bg-border-custom hidden sm:block" />
+
+          {/* Quick Filters */}
+          <div className="flex flex-wrap items-center gap-2.5">
+            <div className="flex items-center gap-1.5 text-xs font-semibold text-text-secondary mr-1">
+              <Filter className="w-3.5 h-3.5 text-primary" />
+              <span>Filters:</span>
             </div>
-          ) : (
-            /* For Admin and Manager: Show full filter selectors */
-            <>
-              {/* Assignee Filter */}
-              <select
-                value={filterAssignee}
-                onChange={(e) => setFilterAssignee(e.target.value)}
-                className="px-3 py-1.5 text-xs bg-purple-50 text-text-primary rounded-lg border border-border-custom focus:border-primary outline-none"
-              >
-                <option value="ALL">All Assignees</option>
-                {users.map((u) => (
-                  <option key={u.id} value={String(u.id)}>
-                    {u.fullName} ({u.teamTag || u.roleName.replace('ROLE_', '')})
-                  </option>
-                ))}
-              </select>
 
-              {/* Priority Filter */}
-              <select
-                value={filterPriority}
-                onChange={(e) => setFilterPriority(e.target.value)}
-                className="px-3 py-1.5 text-xs bg-purple-50 text-text-primary rounded-lg border border-border-custom focus:border-primary outline-none"
-              >
-                <option value="ALL">All Priorities</option>
-                <option value="LOW">Low</option>
-                <option value="MEDIUM">Medium</option>
-                <option value="HIGH">High</option>
-                <option value="URGENT">Urgent</option>
-              </select>
+            {user?.roleName === 'ROLE_EMPLOYEE' ? (
+              <div className="flex items-center gap-2 px-3 py-1.5 text-xs bg-purple-50 text-primary border border-purple-200 rounded-lg font-semibold shadow-xs">
+                <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+                <span>👤 {user?.email}</span>
+                <span className="text-[10px] bg-white px-2 py-0.5 rounded border border-purple-200 text-purple-700">
+                  {user?.fullName} ({user?.teamTag || 'Frontend'})
+                </span>
+              </div>
+            ) : (
+              <>
+                {/* Assignee Filter */}
+                <select
+                  value={filterAssignee}
+                  onChange={(e) => setFilterAssignee(e.target.value)}
+                  className="px-2.5 py-1.5 text-xs bg-purple-50 text-text-primary rounded-lg border border-border-custom focus:border-primary outline-none"
+                >
+                  <option value="ALL">All Assignees</option>
+                  {users.map((u) => (
+                    <option key={u.id} value={String(u.id)}>
+                      {u.fullName} ({u.teamTag || u.roleName.replace('ROLE_', '')})
+                    </option>
+                  ))}
+                </select>
 
-              {/* Type Filter */}
-              <select
-                value={filterType}
-                onChange={(e) => setFilterType(e.target.value)}
-                className="px-3 py-1.5 text-xs bg-purple-50 text-text-primary rounded-lg border border-border-custom focus:border-primary outline-none"
-              >
-                <option value="ALL">All Types</option>
-                <option value="FEATURE">Feature</option>
-                <option value="BUG">Bug</option>
-                <option value="QUERY">Query</option>
-                <option value="CHORE">Chore</option>
-              </select>
-            </>
-          )}
+                {/* Priority Filter */}
+                <select
+                  value={filterPriority}
+                  onChange={(e) => setFilterPriority(e.target.value)}
+                  className="px-2.5 py-1.5 text-xs bg-purple-50 text-text-primary rounded-lg border border-border-custom focus:border-primary outline-none"
+                >
+                  <option value="ALL">All Priorities</option>
+                  <option value="LOW">Low</option>
+                  <option value="MEDIUM">Medium</option>
+                  <option value="HIGH">High</option>
+                  <option value="URGENT">Urgent</option>
+                </select>
+
+                {/* Type Filter */}
+                <select
+                  value={filterType}
+                  onChange={(e) => setFilterType(e.target.value)}
+                  className="px-2.5 py-1.5 text-xs bg-purple-50 text-text-primary rounded-lg border border-border-custom focus:border-primary outline-none"
+                >
+                  <option value="ALL">All Types</option>
+                  <option value="FEATURE">Feature</option>
+                  <option value="BUG">Bug</option>
+                  <option value="QUERY">Query</option>
+                  <option value="CHORE">Chore</option>
+                </select>
+              </>
+            )}
+          </div>
         </div>
 
-        {/* Create Task Button */}
-        <button
-          onClick={() => setIsCreateModalOpen(true)}
-          className="flex items-center gap-2 px-4 py-2 bg-primary hover:bg-primary-hover text-white text-xs font-bold rounded-xl shadow-xs transition-colors self-start"
-        >
-          <Plus className="w-4 h-4" />
-          <span>New Task</span>
-        </button>
+        {/* Right Side: View Switcher & Create Task Button */}
+        <div className="flex items-center gap-3">
+          {/* Corporate Table / Board View Toggle */}
+          <div className="flex items-center bg-purple-50 p-1 rounded-xl border border-purple-200 shadow-2xs">
+            <button
+              onClick={() => setViewMode('table')}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                viewMode === 'table'
+                  ? 'bg-white text-primary shadow-xs'
+                  : 'text-text-secondary hover:text-text-primary'
+              }`}
+            >
+              <List className="w-3.5 h-3.5" />
+              <span>Table View</span>
+            </button>
+            <button
+              onClick={() => setViewMode('board')}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                viewMode === 'board'
+                  ? 'bg-white text-primary shadow-xs'
+                  : 'text-text-secondary hover:text-text-primary'
+              }`}
+            >
+              <LayoutGrid className="w-3.5 h-3.5" />
+              <span>Board View</span>
+            </button>
+          </div>
+
+          {/* Create Task Button */}
+          <button
+            onClick={() => {
+              if (selectedProjectFilter !== 'ALL') {
+                setNewTaskProjectId(Number(selectedProjectFilter));
+              } else if (accessibleProjects.length > 0) {
+                setNewTaskProjectId(accessibleProjects[0].id);
+              }
+              setIsCreateModalOpen(true);
+            }}
+            className="flex items-center gap-2 px-4 py-2 bg-primary hover:bg-primary-hover text-white text-xs font-bold rounded-xl shadow-xs transition-colors cursor-pointer shrink-0"
+          >
+            <Plus className="w-4 h-4" />
+            <span>New Task</span>
+          </button>
+        </div>
+      </div>
+
+      {/* Corporate Status Tabs */}
+      <div className="flex items-center gap-2 overflow-x-auto pb-1 border-b border-border-custom">
+        {statusTabItems.map((tab) => (
+          <button
+            key={tab.key}
+            onClick={() => setActiveStatusTab(tab.key as any)}
+            className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 shrink-0 cursor-pointer ${
+              activeStatusTab === tab.key
+                ? 'bg-primary text-white shadow-2xs'
+                : 'bg-white text-text-secondary hover:text-text-primary border border-border-custom'
+            }`}
+          >
+            <span>{tab.label}</span>
+            <span
+              className={`px-1.5 py-0.5 rounded-full text-[10px] font-bold ${
+                activeStatusTab === tab.key
+                  ? 'bg-white/20 text-white'
+                  : 'bg-purple-100 text-primary'
+              }`}
+            >
+              {tab.count}
+            </span>
+          </button>
+        ))}
       </div>
 
       {/* Active Search Filter Banner */}
@@ -632,7 +836,7 @@ export const TasksPage: React.FC<TasksPageProps> = ({
           {onClearSearch && (
             <button
               onClick={onClearSearch}
-              className="px-2.5 py-1 text-xs font-semibold text-purple-700 hover:text-rose-600 hover:bg-white rounded-lg transition-colors border border-transparent hover:border-rose-200"
+              className="px-2.5 py-1 text-xs font-semibold text-purple-700 hover:text-rose-600 hover:bg-white rounded-lg transition-colors border border-transparent hover:border-rose-200 cursor-pointer"
             >
               Clear Search ×
             </button>
@@ -647,162 +851,163 @@ export const TasksPage: React.FC<TasksPageProps> = ({
         </div>
       )}
 
-      {/* Kanban Board Grid: Responsive Stacking */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4">
-        {columns.map((col) => {
-          const colTasks = filteredTasks.filter((t) => t.status === col.status);
-          return (
-            <div
-              key={col.status}
-              className="bg-purple-50/40 rounded-2xl border border-border-custom p-3 flex flex-col min-h-[500px]"
-            >
-              {/* Column Header */}
-              <div className="flex items-center justify-between pb-3 border-b border-border-custom mb-3 px-1">
-                <div className="flex items-center gap-2">
-                  <span className="font-bold text-xs text-text-primary uppercase tracking-wider">
-                    {col.label}
-                  </span>
-                  <span className="w-5 h-5 rounded-full bg-purple-100 text-primary font-bold text-[11px] flex items-center justify-center">
-                    {colTasks.length}
-                  </span>
-                </div>
-              </div>
-
-              {/* Cards List */}
-              <div className="space-y-3 flex-1 overflow-y-auto">
-                {colTasks.length === 0 ? (
-                  <div className="h-32 border-2 border-dashed border-purple-200/50 rounded-xl flex items-center justify-center text-[11px] text-text-secondary/70">
-                    No tasks
-                  </div>
+      {/* ========================================================
+          CORPORATE ENTERPRISE TABLE VIEW (DEFAULT & SIMPLE)
+          ======================================================== */}
+      {viewMode === 'table' ? (
+        <div className="bg-white rounded-2xl border border-border-custom shadow-xs overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full text-left border-collapse">
+              <thead>
+                <tr className="bg-purple-50/60 border-b border-border-custom text-[11px] font-bold text-text-secondary uppercase tracking-wider">
+                  <th className="py-3 px-4">Task Details</th>
+                  <th className="py-3 px-4">Project</th>
+                  <th className="py-3 px-3">Priority</th>
+                  <th className="py-3 px-4">Assignee</th>
+                  <th className="py-3 px-4">Time & Due</th>
+                  <th className="py-3 px-3">Status</th>
+                  <th className="py-3 px-4 text-right">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-border-custom/60 text-xs">
+                {filteredTasks.length === 0 ? (
+                  <tr>
+                    <td colSpan={7} className="text-center py-12 text-text-secondary">
+                      <div className="flex flex-col items-center justify-center gap-2">
+                        <Briefcase className="w-8 h-8 text-purple-300" />
+                        <span className="font-bold text-sm text-text-primary">No tasks found</span>
+                        <p className="text-xs text-text-secondary max-w-sm">
+                          There are no tasks matching the selected filters or assigned to this project.
+                        </p>
+                      </div>
+                    </td>
+                  </tr>
                 ) : (
-                  colTasks.map((task) => (
-                    <div
+                  filteredTasks.map((task) => (
+                    <tr
                       key={task.id}
                       onClick={() => loadTaskDetails(task.id)}
-                      className={`bg-white p-3.5 rounded-xl border border-border-custom shadow-xs hover:shadow-soft transition-all cursor-pointer group ${
-                        task.isTimerRunning ? 'ring-2 ring-primary/40 bg-purple-50/20' : ''
+                      className={`hover:bg-purple-50/40 transition-colors cursor-pointer group ${
+                        task.isTimerRunning ? 'bg-purple-50/20' : ''
                       }`}
                     >
-                      {/* Top Badges */}
-                      <div className="flex items-center justify-between mb-2">
-                        <span className="font-mono text-xs font-bold text-primary">
-                          {task.taskCode}
-                        </span>
-                        <div className="flex items-center gap-1">
+                      {/* Task Details */}
+                      <td className="py-3.5 px-4">
+                        <div className="flex items-center gap-2 mb-1">
+                          <span className="font-mono text-xs font-bold text-primary bg-purple-50 border border-purple-200 px-2 py-0.5 rounded-md">
+                            {task.taskCode}
+                          </span>
+                          <span className="text-[10px] font-bold px-1.5 py-0.5 bg-gray-100 text-gray-600 rounded">
+                            {task.type}
+                          </span>
                           {task.isTimerRunning && (
-                            <span className="flex items-center gap-1 text-[10px] font-bold text-primary bg-purple-100 px-1.5 py-0.5 rounded-full animate-pulse">
-                              <Clock className="w-3 h-3" /> Live
-                            </span>
-                          )}
-                          <PriorityBadge priority={task.priority} />
-                          {canEditTask && (
-                            <button
-                              type="button"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setActiveTask(task);
-                                openEditModal(task);
-                              }}
-                              className="p-1 hover:bg-purple-100 text-text-secondary hover:text-primary rounded transition-colors"
-                              title="Edit Task"
-                            >
-                              <Edit3 className="w-3 h-3" />
-                            </button>
-                          )}
-                          {canDeleteTask && (
-                            <button
-                              type="button"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setTaskToDelete(task);
-                              }}
-                              className="p-1 hover:bg-rose-100 text-text-secondary hover:text-rose-600 rounded cursor-pointer transition-colors"
-                              title="Delete Task"
-                            >
-                              <Trash2 className="w-3.5 h-3.5" />
-                            </button>
-                          )}
-                        </div>
-                      </div>
-
-                      {/* Title */}
-                      <h4 className="font-semibold text-xs text-text-primary line-clamp-2 leading-relaxed mb-3 group-hover:text-primary transition-colors">
-                        {task.title}
-                      </h4>
-
-                      {/* Checklist & Timer Indicators */}
-                      <div className="flex items-center justify-between text-[11px] text-text-secondary pt-2 border-t border-border-custom/60">
-                        <div className="flex items-center gap-3">
-                          {task.checklistTotal > 0 && (
-                            <span
-                              className={`flex items-center gap-1 ${
-                                task.checklistCompleted === task.checklistTotal
-                                  ? 'text-emerald-600 font-semibold'
-                                  : ''
-                              }`}
-                            >
-                              <CheckSquare className="w-3.5 h-3.5" />
-                              {task.checklistCompleted}/{task.checklistTotal}
-                            </span>
-                          )}
-                          {task.totalLoggedSeconds > 0 && (
-                            <span className="flex items-center gap-1">
-                              <Clock className="w-3.5 h-3.5 text-gray-400" />
-                              {(task.totalLoggedSeconds / 3600).toFixed(1)}h
+                            <span className="flex items-center gap-1 text-[10px] font-bold text-primary bg-purple-100 px-2 py-0.5 rounded-full animate-pulse">
+                              <Clock className="w-3 h-3" /> Live Running
                             </span>
                           )}
                         </div>
+                        <h4 className="font-semibold text-text-primary group-hover:text-primary transition-colors line-clamp-1 max-w-md">
+                          {task.title}
+                        </h4>
+                        {task.checklistTotal > 0 && (
+                          <div className="flex items-center gap-1 text-[10px] text-text-secondary mt-1">
+                            <CheckSquare className="w-3 h-3" />
+                            <span>
+                              Checklist: {task.checklistCompleted}/{task.checklistTotal} completed
+                            </span>
+                          </div>
+                        )}
+                      </td>
 
-                        {/* Assignee Avatar / Badge */}
+                      {/* Project */}
+                      <td className="py-3.5 px-4">
+                        <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-purple-50 text-primary border border-purple-200 rounded-lg text-xs font-bold">
+                          <Briefcase className="w-3 h-3" />
+                          <span>{task.projectName || 'TeamCRM Core Platform'}</span>
+                        </span>
+                      </td>
+
+                      {/* Priority */}
+                      <td className="py-3.5 px-3">
+                        <PriorityBadge priority={task.priority} />
+                      </td>
+
+                      {/* Assignee */}
+                      <td className="py-3.5 px-4">
                         {task.assigneeIds === 'ALL' || task.assigneeNames === 'All Employees' ? (
-                          <span
-                            className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 text-blue-700 font-bold text-[10px]"
-                            title="Assigned to All Employees"
-                          >
-                            <Users className="w-3 h-3 text-blue-600" />
-                            <span>All Staff</span>
-                          </span>
+                          <div className="flex items-center gap-1.5 text-blue-700 font-bold text-xs bg-blue-50 px-2.5 py-1 rounded-lg border border-blue-200 inline-flex">
+                            <Users className="w-3.5 h-3.5 text-blue-600" />
+                            <span>All Employees</span>
+                          </div>
                         ) : task.assigneeNames && task.assigneeNames.includes(',') ? (
-                          <span
-                            className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-purple-50 border border-purple-200 text-primary font-bold text-[10px]"
-                            title={task.assigneeNames}
-                          >
-                            <Users className="w-3 h-3" />
-                            <span>{task.assigneeIds ? `${task.assigneeIds.split(',').length} Staff` : 'Team'}</span>
-                          </span>
+                          <div className="flex items-center gap-1.5 text-primary font-bold text-xs bg-purple-50 px-2.5 py-1 rounded-lg border border-purple-200 inline-flex">
+                            <Users className="w-3.5 h-3.5" />
+                            <span>{task.assigneeNames.split(',').length} Team Members</span>
+                          </div>
                         ) : task.assigneeName ? (
-                          <div
-                            className="w-6 h-6 rounded-full bg-purple-100 text-primary font-bold text-[10px] flex items-center justify-center border border-purple-200"
-                            title={task.assigneeName}
-                          >
-                            {task.assigneeName.slice(0, 2).toUpperCase()}
+                          <div className="flex items-center gap-2">
+                            <div className="w-6 h-6 rounded-full bg-purple-100 text-primary font-bold text-[10px] flex items-center justify-center border border-purple-200 shrink-0">
+                              {task.assigneeName.slice(0, 2).toUpperCase()}
+                            </div>
+                            <div>
+                              <div className="font-semibold text-text-primary text-xs leading-none">
+                                {task.assigneeName}
+                              </div>
+                              <span className="text-[10px] text-text-secondary">
+                                {task.assigneeTeam || 'Frontend'}
+                              </span>
+                            </div>
                           </div>
                         ) : (
-                          <span className="text-[10px] text-gray-400">Unassigned</span>
+                          <span className="text-text-secondary text-xs italic">Unassigned</span>
                         )}
-                      </div>
+                      </td>
 
-                      {/* Action Strip: To Do -> In Progress -> Review -> Done */}
-                      <div className="mt-2.5 pt-2 border-t border-dashed border-gray-100 flex items-center justify-between text-[10px]">
-                        <span className="text-gray-400 font-medium">Action:</span>
-                        <div className="flex items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
-                          {col.status === 'TODO' && (
+                      {/* Time & Due Date */}
+                      <td className="py-3.5 px-4 text-xs">
+                        <div className="font-semibold text-text-primary">
+                          {task.dueDate || 'No due date'}
+                        </div>
+                        <div className="text-[11px] text-text-secondary flex items-center gap-1 mt-0.5">
+                          <Clock className="w-3 h-3 text-gray-400" />
+                          <span>{(task.totalLoggedSeconds / 3600).toFixed(1)}h logged</span>
+                          {task.estimatedHours && (
+                            <span>/ {task.estimatedHours}h est</span>
+                          )}
+                        </div>
+                      </td>
+
+                      {/* Status */}
+                      <td className="py-3.5 px-3">
+                        <StatusBadge status={task.status} />
+                      </td>
+
+                      {/* Quick Actions */}
+                      <td className="py-3.5 px-4 text-right">
+                        <div
+                          className="flex items-center justify-end gap-1.5"
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          {/* Timer & Workflow Action */}
+                          {task.status === 'TODO' && (
                             <button
                               type="button"
                               onClick={() => handleStartWork(task.id)}
-                              className="px-2.5 py-1 rounded-lg bg-primary hover:bg-primary-hover text-white font-bold cursor-pointer transition-colors flex items-center gap-1 shadow-2xs"
+                              className="px-2.5 py-1 rounded-lg bg-primary hover:bg-primary-hover text-white font-bold text-xs cursor-pointer transition-colors flex items-center gap-1 shadow-2xs"
+                              title="Start Work & Timer"
                             >
-                              <Play className="w-3 h-3" /> Start Work
+                              <Play className="w-3 h-3" /> Start
                             </button>
                           )}
 
-                          {col.status === 'IN_PROGRESS' && (
+                          {task.status === 'IN_PROGRESS' && (
                             <>
                               {task.isTimerRunning ? (
                                 <button
                                   type="button"
                                   onClick={() => handlePauseWork(task.id)}
-                                  className="px-2 py-1 rounded-lg bg-amber-100 hover:bg-amber-200 text-amber-800 font-bold cursor-pointer transition-colors flex items-center gap-1"
+                                  className="px-2.5 py-1 rounded-lg bg-amber-100 hover:bg-amber-200 text-amber-800 font-bold text-xs cursor-pointer transition-colors flex items-center gap-1"
+                                  title="Pause Timer"
                                 >
                                   <Pause className="w-3 h-3" /> Pause
                                 </button>
@@ -810,7 +1015,8 @@ export const TasksPage: React.FC<TasksPageProps> = ({
                                 <button
                                   type="button"
                                   onClick={() => handleStartWork(task.id)}
-                                  className="px-2 py-1 rounded-lg bg-blue-100 hover:bg-blue-200 text-blue-800 font-bold cursor-pointer transition-colors flex items-center gap-1"
+                                  className="px-2.5 py-1 rounded-lg bg-blue-100 hover:bg-blue-200 text-blue-800 font-bold text-xs cursor-pointer transition-colors flex items-center gap-1"
+                                  title="Resume Timer"
                                 >
                                   <Play className="w-3 h-3" /> Resume
                                 </button>
@@ -818,27 +1024,280 @@ export const TasksPage: React.FC<TasksPageProps> = ({
                               <button
                                 type="button"
                                 onClick={() => handleSubmitForReview(task.id)}
-                                className="px-2 py-1 rounded-lg bg-purple-100 hover:bg-purple-200 text-primary font-bold cursor-pointer transition-colors flex items-center gap-1"
+                                className="px-2.5 py-1 rounded-lg bg-purple-100 hover:bg-purple-200 text-primary font-bold text-xs cursor-pointer transition-colors"
                               >
                                 Review
-                              </button>
-                              <button
-                                type="button"
-                                onClick={async () => {
-                                  try { await timeApi.stopTimer('Marked blocked'); } catch {}
-                                  await handleMoveStatus(task.id, 'BLOCKED');
-                                  showToast(`Task ${task.taskCode} marked Blocked`, 'error');
-                                }}
-                                className="px-1.5 py-1 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-700 font-bold cursor-pointer transition-colors"
-                                title="Mark Blocked"
-                              >
-                                🚫
                               </button>
                             </>
                           )}
 
-                          {col.status === 'BLOCKED' && (
-                            <div className="flex items-center gap-1.5">
+                          {task.status === 'REVIEW' && (
+                            <>
+                              {isAdminOrManager ? (
+                                <button
+                                  type="button"
+                                  onClick={() => handleApproveTask(task.id)}
+                                  className="px-2.5 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs cursor-pointer transition-colors flex items-center gap-1 shadow-2xs"
+                                >
+                                  ✓ Approve
+                                </button>
+                              ) : (
+                                <span className="text-[10px] font-bold text-amber-800 bg-amber-50 px-2 py-1 rounded-lg border border-amber-200">
+                                  In Review
+                                </span>
+                              )}
+                            </>
+                          )}
+
+                          {task.status === 'BLOCKED' && (
+                            <button
+                              type="button"
+                              onClick={() => handleStartWork(task.id)}
+                              className="px-2.5 py-1 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs cursor-pointer transition-colors flex items-center gap-1 shadow-2xs"
+                            >
+                              <Play className="w-3 h-3" /> Unblock
+                            </button>
+                          )}
+
+                          {task.status === 'DONE' && (
+                            <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-lg border border-emerald-200">
+                              ✓ Completed
+                            </span>
+                          )}
+
+                          {/* Open Drawer */}
+                          <button
+                            type="button"
+                            onClick={() => loadTaskDetails(task.id)}
+                            className="p-1.5 hover:bg-purple-100 text-text-secondary hover:text-primary rounded-lg transition-colors cursor-pointer"
+                            title="View Full Task Details"
+                          >
+                            <ExternalLink className="w-3.5 h-3.5" />
+                          </button>
+
+                          {/* Edit / Delete */}
+                          {canEditTask && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setActiveTask(task);
+                                openEditModal(task);
+                              }}
+                              className="p-1.5 hover:bg-purple-100 text-text-secondary hover:text-primary rounded-lg transition-colors cursor-pointer"
+                              title="Edit Task"
+                            >
+                              <Edit3 className="w-3.5 h-3.5" />
+                            </button>
+                          )}
+
+                          {canDeleteTask && (
+                            <button
+                              type="button"
+                              onClick={() => setTaskToDelete(task)}
+                              className="p-1.5 hover:bg-rose-100 text-text-secondary hover:text-rose-600 rounded-lg cursor-pointer transition-colors"
+                              title="Delete Task"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      ) : (
+        /* ========================================================
+            BOARD VIEW (OPTIONAL KANBAN)
+            ======================================================== */
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4">
+          {columns.map((col) => {
+            const colTasks = filteredTasks.filter((t) => t.status === col.status);
+            return (
+              <div
+                key={col.status}
+                className="bg-purple-50/40 rounded-2xl border border-border-custom p-3 flex flex-col min-h-[500px]"
+              >
+                {/* Column Header */}
+                <div className="flex items-center justify-between pb-3 border-b border-border-custom mb-3 px-1">
+                  <div className="flex items-center gap-2">
+                    <span className="font-bold text-xs text-text-primary uppercase tracking-wider">
+                      {col.label}
+                    </span>
+                    <span className="w-5 h-5 rounded-full bg-purple-100 text-primary font-bold text-[11px] flex items-center justify-center">
+                      {colTasks.length}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Cards List */}
+                <div className="space-y-3 flex-1 overflow-y-auto">
+                  {colTasks.length === 0 ? (
+                    <div className="h-32 border-2 border-dashed border-purple-200/50 rounded-xl flex items-center justify-center text-[11px] text-text-secondary/70">
+                      No tasks
+                    </div>
+                  ) : (
+                    colTasks.map((task) => (
+                      <div
+                        key={task.id}
+                        onClick={() => loadTaskDetails(task.id)}
+                        className={`bg-white p-3.5 rounded-xl border border-border-custom shadow-xs hover:shadow-soft transition-all cursor-pointer group ${
+                          task.isTimerRunning ? 'ring-2 ring-primary/40 bg-purple-50/20' : ''
+                        }`}
+                      >
+                        {/* Top Badges */}
+                        <div className="flex items-center justify-between mb-2">
+                          <span className="font-mono text-xs font-bold text-primary">
+                            {task.taskCode}
+                          </span>
+                          <div className="flex items-center gap-1">
+                            {task.isTimerRunning && (
+                              <span className="flex items-center gap-1 text-[10px] font-bold text-primary bg-purple-100 px-1.5 py-0.5 rounded-full animate-pulse">
+                                <Clock className="w-3 h-3" /> Live
+                              </span>
+                            )}
+                            <PriorityBadge priority={task.priority} />
+                            {canEditTask && (
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setActiveTask(task);
+                                  openEditModal(task);
+                                }}
+                                className="p-1 hover:bg-purple-100 text-text-secondary hover:text-primary rounded transition-colors"
+                                title="Edit Task"
+                              >
+                                <Edit3 className="w-3 h-3" />
+                              </button>
+                            )}
+                            {canDeleteTask && (
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setTaskToDelete(task);
+                                }}
+                                className="p-1 hover:bg-rose-100 text-text-secondary hover:text-rose-600 rounded cursor-pointer transition-colors"
+                                title="Delete Task"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Title */}
+                        <h4 className="font-semibold text-xs text-text-primary line-clamp-2 leading-relaxed mb-3 group-hover:text-primary transition-colors">
+                          {task.title}
+                        </h4>
+
+                        {/* Project Badge */}
+                        <div className="mb-2">
+                          <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-purple-50 text-primary border border-purple-200">
+                            {task.projectName || 'TeamCRM Core'}
+                          </span>
+                        </div>
+
+                        {/* Checklist & Timer Indicators */}
+                        <div className="flex items-center justify-between text-[11px] text-text-secondary pt-2 border-t border-border-custom/60">
+                          <div className="flex items-center gap-3">
+                            {task.checklistTotal > 0 && (
+                              <span
+                                className={`flex items-center gap-1 ${
+                                  task.checklistCompleted === task.checklistTotal
+                                    ? 'text-emerald-600 font-semibold'
+                                    : ''
+                                }`}
+                              >
+                                <CheckSquare className="w-3.5 h-3.5" />
+                                {task.checklistCompleted}/{task.checklistTotal}
+                              </span>
+                            )}
+                            {task.totalLoggedSeconds > 0 && (
+                              <span className="flex items-center gap-1">
+                                <Clock className="w-3.5 h-3.5 text-gray-400" />
+                                {(task.totalLoggedSeconds / 3600).toFixed(1)}h
+                              </span>
+                            )}
+                          </div>
+
+                          {/* Assignee Avatar / Badge */}
+                          {task.assigneeIds === 'ALL' || task.assigneeNames === 'All Employees' ? (
+                            <span
+                              className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 text-blue-700 font-bold text-[10px]"
+                              title="Assigned to All Employees"
+                            >
+                              <Users className="w-3 h-3 text-blue-600" />
+                              <span>All Staff</span>
+                            </span>
+                          ) : task.assigneeNames && task.assigneeNames.includes(',') ? (
+                            <span
+                              className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-purple-50 border border-purple-200 text-primary font-bold text-[10px]"
+                              title={task.assigneeNames}
+                            >
+                              <Users className="w-3 h-3" />
+                              <span>{task.assigneeIds ? `${task.assigneeIds.split(',').length} Staff` : 'Team'}</span>
+                            </span>
+                          ) : task.assigneeName ? (
+                            <div
+                              className="w-6 h-6 rounded-full bg-purple-100 text-primary font-bold text-[10px] flex items-center justify-center border border-purple-200"
+                              title={task.assigneeName}
+                            >
+                              {task.assigneeName.slice(0, 2).toUpperCase()}
+                            </div>
+                          ) : (
+                            <span className="text-[10px] text-gray-400">Unassigned</span>
+                          )}
+                        </div>
+
+                        {/* Action Strip */}
+                        <div className="mt-2.5 pt-2 border-t border-dashed border-gray-100 flex items-center justify-between text-[10px]">
+                          <span className="text-gray-400 font-medium">Action:</span>
+                          <div className="flex items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
+                            {col.status === 'TODO' && (
+                              <button
+                                type="button"
+                                onClick={() => handleStartWork(task.id)}
+                                className="px-2.5 py-1 rounded-lg bg-primary hover:bg-primary-hover text-white font-bold cursor-pointer transition-colors flex items-center gap-1 shadow-2xs"
+                              >
+                                <Play className="w-3 h-3" /> Start Work
+                              </button>
+                            )}
+
+                            {col.status === 'IN_PROGRESS' && (
+                              <>
+                                {task.isTimerRunning ? (
+                                  <button
+                                    type="button"
+                                    onClick={() => handlePauseWork(task.id)}
+                                    className="px-2 py-1 rounded-lg bg-amber-100 hover:bg-amber-200 text-amber-800 font-bold cursor-pointer transition-colors flex items-center gap-1"
+                                  >
+                                    <Pause className="w-3 h-3" /> Pause
+                                  </button>
+                                ) : (
+                                  <button
+                                    type="button"
+                                    onClick={() => handleStartWork(task.id)}
+                                    className="px-2 py-1 rounded-lg bg-blue-100 hover:bg-blue-200 text-blue-800 font-bold cursor-pointer transition-colors flex items-center gap-1"
+                                  >
+                                    <Play className="w-3 h-3" /> Resume
+                                  </button>
+                                )}
+                                <button
+                                  type="button"
+                                  onClick={() => handleSubmitForReview(task.id)}
+                                  className="px-2 py-1 rounded-lg bg-purple-100 hover:bg-purple-200 text-primary font-bold cursor-pointer transition-colors flex items-center gap-1"
+                                >
+                                  Review
+                                </button>
+                              </>
+                            )}
+
+                            {col.status === 'BLOCKED' && (
                               <button
                                 type="button"
                                 onClick={() => handleStartWork(task.id)}
@@ -846,71 +1305,42 @@ export const TasksPage: React.FC<TasksPageProps> = ({
                               >
                                 <Play className="w-3 h-3" /> Unblock
                               </button>
-                              <button
-                                type="button"
-                                onClick={() => handleMoveStatus(task.id, 'TODO')}
-                                className="px-1.5 py-1 rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-700 font-semibold cursor-pointer transition-colors"
-                                title="Send back to To Do"
-                              >
-                                To Do
-                              </button>
-                            </div>
-                          )}
+                            )}
 
-                          {col.status === 'REVIEW' && (
-                            <>
-                              {isAdminOrManager ? (
-                                <>
+                            {col.status === 'REVIEW' && (
+                              <>
+                                {isAdminOrManager ? (
                                   <button
                                     type="button"
                                     onClick={() => handleApproveTask(task.id)}
                                     className="px-2.5 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-bold cursor-pointer transition-colors flex items-center gap-1 shadow-2xs"
                                   >
-                                    ✓ Approve Done
+                                    ✓ Approve
                                   </button>
-                                  <button
-                                    type="button"
-                                    onClick={() => handleMoveStatus(task.id, 'IN_PROGRESS')}
-                                    className="px-1.5 py-1 rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-700 font-semibold cursor-pointer transition-colors"
-                                    title="Send back to In Progress"
-                                  >
-                                    ↩ Back
-                                  </button>
-                                </>
-                              ) : (
-                                <span className="text-[10px] font-bold text-amber-800 bg-amber-50 px-2 py-1 rounded-lg border border-amber-200">
-                                  ⏳ Under Manager Review
-                                </span>
-                              )}
-                            </>
-                          )}
+                                ) : (
+                                  <span className="text-[10px] font-bold text-amber-800 bg-amber-50 px-2 py-1 rounded-lg border border-amber-200">
+                                    ⏳ Review
+                                  </span>
+                                )}
+                              </>
+                            )}
 
-                          {col.status === 'DONE' && (
-                            <div className="flex items-center gap-1.5">
+                            {col.status === 'DONE' && (
                               <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-lg border border-emerald-200">
                                 ✓ Done
                               </span>
-                              {isAdminOrManager && (
-                                <button
-                                  type="button"
-                                  onClick={() => handleMoveStatus(task.id, 'TODO')}
-                                  className="text-[9px] text-gray-400 hover:text-gray-700 underline cursor-pointer"
-                                >
-                                  Reopen
-                                </button>
-                              )}
-                            </div>
-                          )}
+                            )}
+                          </div>
                         </div>
                       </div>
-                    </div>
-                  ))
-                )}
+                    ))
+                  )}
+                </div>
               </div>
-            </div>
-          );
-        })}
-      </div>
+            );
+          })}
+        </div>
+      )}
 
       {/* TASK DETAIL DRAWER / MODAL */}
       {activeTask && (
@@ -1370,6 +1800,30 @@ export const TasksPage: React.FC<TasksPageProps> = ({
         title="Create New Sprint Task"
       >
         <form onSubmit={handleCreateTask} className="space-y-4">
+          {/* Project Selector */}
+          <div>
+            <label className="block text-xs font-semibold text-text-primary mb-1">
+              Project <span className="text-primary">*</span>
+            </label>
+            <select
+              value={newTaskProjectId}
+              onChange={(e) => {
+                setNewTaskProjectId(Number(e.target.value));
+                setNewTaskSelectedAssignees([]);
+              }}
+              className="w-full px-3 py-2 bg-purple-50 text-xs font-bold text-text-primary rounded-lg border border-border-custom focus:border-primary outline-none"
+            >
+              {accessibleProjects.map((p) => (
+                <option key={p.id} value={p.id}>
+                  [{p.keyCode}] {p.name}
+                </option>
+              ))}
+            </select>
+            <p className="text-[10px] text-text-secondary mt-1">
+              Assignee selection below is dynamically filtered to managers and employees belonging to this project.
+            </p>
+          </div>
+
           <div>
             <label className="block text-xs font-semibold text-text-primary mb-1">Task Title</label>
             <input
@@ -1562,6 +2016,25 @@ export const TasksPage: React.FC<TasksPageProps> = ({
         title={`Edit Task: ${activeTask?.taskCode || ''}`}
       >
         <form onSubmit={handleUpdateTask} className="space-y-4">
+          {/* Project Selector */}
+          <div>
+            <label className="block text-xs font-semibold text-text-primary mb-1">Project</label>
+            <select
+              value={editProjectId}
+              onChange={(e) => {
+                setEditProjectId(Number(e.target.value));
+                setEditSelectedAssignees([]);
+              }}
+              className="w-full px-3 py-2 bg-purple-50 text-xs font-bold text-text-primary rounded-lg border border-border-custom focus:border-primary outline-none"
+            >
+              {accessibleProjects.map((p) => (
+                <option key={p.id} value={p.id}>
+                  [{p.keyCode}] {p.name}
+                </option>
+              ))}
+            </select>
+          </div>
+
           <div>
             <label className="block text-xs font-semibold text-text-primary mb-1">Task Title</label>
             <input
@@ -1644,7 +2117,7 @@ export const TasksPage: React.FC<TasksPageProps> = ({
                   Select one or more employees (e.g. Employee 1, Employee 2):
                 </div>
                 <div className="max-h-36 overflow-y-auto space-y-1 bg-white p-2 rounded-lg border border-border-custom">
-                  {assignableUsers.map((u) => {
+                  {editTaskAssignableUsers.map((u) => {
                     const isSelected = editSelectedAssignees.includes(u.id);
                     return (
                       <label
@@ -1678,7 +2151,7 @@ export const TasksPage: React.FC<TasksPageProps> = ({
                 {editSelectedAssignees.length > 0 && (
                   <div className="flex flex-wrap gap-1 mt-2">
                     {editSelectedAssignees.map((id) => {
-                      const u = assignableUsers.find((user) => user.id === id);
+                      const u = editTaskAssignableUsers.find((user) => user.id === id);
                       return (
                         <span
                           key={id}

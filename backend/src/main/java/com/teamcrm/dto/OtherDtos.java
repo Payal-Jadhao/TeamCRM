@@ -193,6 +193,28 @@ public class OtherDtos {
     ) {}
 
     // Dashboards
+    public record AdminDashboardDto(
+            BigDecimal pipelineRevenue,
+            BigDecimal closedWonMonth,
+            long activeSprintTasks,
+            long totalSprintTasks,
+            long blockedTasks,
+            long totalLeads,
+            long activeUsers,
+            long adminCount,
+            long managerCount,
+            long employeeCount,
+            List<Map<String, Object>> teamWorkload,
+            List<Map<String, Object>> dealsByStage,
+            BigDecimal estimatedHours,
+            BigDecimal actualHours,
+            BigDecimal varianceHours,
+            long pendingPermissionRequests,
+            long newEmployeesThisWeek,
+            long failedLoginAttempts,
+            List<Map<String, Object>> recentAuditTrail
+    ) {}
+
     public record ManagerDashboardDto(
             long totalProjects,
             long totalTasks,

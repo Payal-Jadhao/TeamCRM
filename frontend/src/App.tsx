@@ -4,6 +4,7 @@ import { Topbar } from './components/layout/Topbar';
 import { Sidebar, type NavTab } from './components/layout/Sidebar';
 import { LoginPage } from './pages/LoginPage';
 import { DashboardPage } from './pages/DashboardPage';
+import { ProjectsPage } from './pages/ProjectsPage';
 import { TasksPage } from './pages/TasksPage';
 import { CrmPage } from './pages/CrmPage';
 import { ApiHandoffPage } from './pages/ApiHandoffPage';
@@ -11,6 +12,7 @@ import { MeetingsPage } from './pages/MeetingsPage';
 import { TimeReportsPage } from './pages/TimeReportsPage';
 import { UsersPage } from './pages/UsersPage';
 import { AuditLogPage } from './pages/AuditLogPage';
+import { SettingsPage } from './pages/SettingsPage';
 import { AiCopilotWidget } from './components/ai/AiCopilotWidget';
 import type { Task } from './types';
 
@@ -22,6 +24,9 @@ const MainLayout: React.FC = () => {
 
   // Selected task to open in drawer
   const [selectedTaskId, setSelectedTaskId] = useState<number | null>(null);
+
+  // Selected project filter for tasks
+  const [selectedProjectId, setSelectedProjectId] = useState<number | null>(null);
 
   // Selected task to schedule meeting for
   const [taskForMeeting, setTaskForMeeting] = useState<Task | null>(null);
@@ -38,6 +43,13 @@ const MainLayout: React.FC = () => {
   const handleScheduleMeetingFromTask = (task: Task) => {
     setTaskForMeeting(task);
     setActiveTab('meetings');
+  };
+
+  const handleNavigateTab = (tab: NavTab, projectId?: number) => {
+    if (projectId !== undefined) {
+      setSelectedProjectId(projectId);
+    }
+    setActiveTab(tab);
   };
 
   return (
@@ -61,7 +73,7 @@ const MainLayout: React.FC = () => {
           searchTerm={searchTerm}
           onSearchChange={setSearchTerm}
           onToggleMobileMenu={() => setMobileMenuOpen(!mobileMenuOpen)}
-          onNavigateTab={(tab) => setActiveTab(tab)}
+          onNavigateTab={(tab) => handleNavigateTab(tab)}
         />
 
         {/* Scrollable Page Body */}
@@ -69,7 +81,13 @@ const MainLayout: React.FC = () => {
           {activeTab === 'dashboard' && (
             <DashboardPage
               onOpenTask={handleOpenTask}
-              onNavigateTab={(tab) => setActiveTab(tab)}
+              onNavigateTab={handleNavigateTab}
+            />
+          )}
+
+          {activeTab === 'projects' && (
+            <ProjectsPage
+              onNavigateTab={handleNavigateTab}
             />
           )}
 
@@ -78,6 +96,8 @@ const MainLayout: React.FC = () => {
               onScheduleMeeting={handleScheduleMeetingFromTask}
               selectedTaskId={selectedTaskId}
               onClearSelectedTask={() => setSelectedTaskId(null)}
+              selectedProjectId={selectedProjectId}
+              onSelectProject={setSelectedProjectId}
               searchTerm={searchTerm}
               onClearSearch={() => setSearchTerm('')}
             />
@@ -99,6 +119,7 @@ const MainLayout: React.FC = () => {
           {activeTab === 'users' && (user?.roleName === 'ROLE_ADMIN' || user?.roleName === 'ROLE_MANAGER') && <UsersPage />}
 
           {activeTab === 'audit' && user?.roleName === 'ROLE_ADMIN' && <AuditLogPage />}
+          {activeTab === 'settings' && user?.roleName === 'ROLE_ADMIN' && <SettingsPage />}
         </main>
       </div>
 

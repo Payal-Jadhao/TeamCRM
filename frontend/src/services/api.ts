@@ -2,6 +2,7 @@ import axios from 'axios';
 import {
   AuthResponse,
   User,
+  Project,
   Task,
   ChecklistItem,
   TimeLog,
@@ -15,11 +16,13 @@ import {
   NotificationItem,
   ManagerDashboard,
   EmployeeDashboard,
+  AdminDashboard,
+  MasterItem,
   AuditLogItem
 } from '../types';
 import { mockStore } from './mockStore';
 
-const envApiUrl = (import.meta.env.VITE_API_BASE_URL || '').trim();
+const envApiUrl = (import.meta.env.VITE_API_URL || import.meta.env.VITE_API_BASE_URL || '').trim();
 const isDummyUrl = !envApiUrl || envApiUrl.includes('xxxx') || envApiUrl.includes('placeholder') || envApiUrl.includes('example.com');
 
 const API_BASE_URL = isDummyUrl
@@ -311,6 +314,43 @@ export const userApi = {
       () => mockStore.deleteUser(id)
     );
   },
+  resetPassword: async (id: number, newPassword?: string): Promise<void> => {
+    return safeCall(
+      () => apiClient.post(`/users/${id}/reset-password`, { newPassword }).then(() => { }),
+      () => { }
+    );
+  },
+};
+
+// PROJECTS MASTER
+export const projectApi = {
+  getProjects: async (): Promise<Project[]> => {
+    return safeCall(
+      () => apiClient.get<Project[]>('/projects').then((r) => r.data),
+      () => mockStore.getProjects()
+    );
+  },
+  createProject: async (data: Partial<Project> & { managerIds?: number[]; employeeIds?: number[] }): Promise<Project> => {
+    return safeCall(
+      () => apiClient.post<Project>('/projects', data).then((r) => r.data),
+      () => mockStore.createProject(data),
+      { strict: true }
+    );
+  },
+  updateProject: async (id: number, data: Partial<Project> & { managerIds?: number[]; employeeIds?: number[] }): Promise<Project> => {
+    return safeCall(
+      () => apiClient.put<Project>(`/projects/${id}`, data).then((r) => r.data),
+      () => mockStore.updateProject(id, data),
+      { strict: true }
+    );
+  },
+  deleteProject: async (id: number): Promise<void> => {
+    return safeCall(
+      () => apiClient.delete(`/projects/${id}`).then(() => { }),
+      () => mockStore.deleteProject(id),
+      { strict: true }
+    );
+  },
 };
 
 // TASKS & KANBAN
@@ -433,7 +473,6 @@ export const timeApi = {
         };
         const logs = mockStore.getMyLogs();
         logs.unshift(log);
-        localStorage.setItem('teamcrm_store_time_logs', JSON.stringify(logs));
         return log;
       }
     );
@@ -544,7 +583,6 @@ export const meetingApi = {
           createdAt: new Date().toISOString()
         };
         meetings.push(m);
-        localStorage.setItem('teamcrm_store_meetings', JSON.stringify(meetings));
         return m;
       }
     );
@@ -576,8 +614,7 @@ export const meetingApi = {
     return safeCall(
       () => apiClient.delete(`/meetings/${id}`).then(() => { }),
       () => {
-        const meetings = mockStore.getMeetings().filter((m) => m.id !== id);
-        localStorage.setItem('teamcrm_store_meetings', JSON.stringify(meetings));
+        // In-memory fallback only
       }
     );
   },
@@ -609,7 +646,6 @@ export const crmApi = {
           createdAt: new Date().toISOString()
         };
         leads.unshift(l);
-        localStorage.setItem('teamcrm_store_leads', JSON.stringify(leads));
         return l;
       }
     );
@@ -645,7 +681,6 @@ export const crmApi = {
           createdAt: new Date().toISOString()
         };
         custs.unshift(c);
-        localStorage.setItem('teamcrm_store_customers', JSON.stringify(custs));
         return c;
       }
     );
@@ -673,7 +708,6 @@ export const crmApi = {
           createdAt: new Date().toISOString()
         };
         deals.unshift(d);
-        localStorage.setItem('teamcrm_store_deals', JSON.stringify(deals));
         return d;
       }
     );
@@ -693,6 +727,14 @@ export const crmApi = {
 
 // DASHBOARDS
 export const dashboardApi = {
+  getAdminDashboard: async (): Promise<AdminDashboard> => {
+    return safeCall(
+      () => apiClient.get<AdminDashboard>('/dashboard/admin').then((r) => r.data),
+      () => {
+        throw new Error('Backend required for live admin dashboard metrics');
+      }
+    );
+  },
   getManagerDashboard: async (): Promise<ManagerDashboard> => {
     return safeCall(
       () => apiClient.get<ManagerDashboard>('/dashboard/manager').then((r) => r.data),
@@ -706,6 +748,29 @@ export const dashboardApi = {
     );
   },
 };
+
+// MASTERS
+export const masterApi = {
+  getMasters: async (category?: string): Promise<MasterItem[]> => {
+    return safeCall(
+      () => apiClient.get<MasterItem[]>('/masters', { params: { category } }).then((r) => r.data),
+      () => []
+    );
+  },
+  createMaster: async (item: Partial<MasterItem>): Promise<MasterItem> => {
+    return apiClient.post<MasterItem>('/masters', item).then((r) => r.data);
+  },
+  updateMaster: async (id: number, item: Partial<MasterItem>): Promise<MasterItem> => {
+    return apiClient.put<MasterItem>(`/masters/${id}`, item).then((r) => r.data);
+  },
+  toggleMaster: async (id: number): Promise<MasterItem> => {
+    return apiClient.patch<MasterItem>(`/masters/${id}/toggle`).then((r) => r.data);
+  },
+  deleteMaster: async (id: number): Promise<void> => {
+    return apiClient.delete(`/masters/${id}`).then(() => {});
+  },
+};
+
 
 // NOTIFICATIONS
 export const notificationApi = {

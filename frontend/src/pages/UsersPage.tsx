@@ -14,13 +14,10 @@ import {
   Lock,
   Mail,
   Sliders,
-  Eye,
-  EyeOff,
-  Copy,
-  Check,
   AlertTriangle,
   Edit3,
   Trash2,
+  RefreshCw,
 } from 'lucide-react';
 
 export const UsersPage: React.FC = () => {
@@ -28,19 +25,6 @@ export const UsersPage: React.FC = () => {
   const [users, setUsers] = useState<User[]>([]);
   const [permissions, setPermissions] = useState<{ id: number; code: string; module: string; description: string }[]>([]);
   const [loading, setLoading] = useState(true);
-  const [showPasswordMap, setShowPasswordMap] = useState<Record<number, boolean>>({});
-  const [copiedId, setCopiedId] = useState<number | null>(null);
-
-  // Toggle password visibility for a user
-  const toggleShowPassword = (id: number) => {
-    setShowPasswordMap((prev) => ({ ...prev, [id]: !prev[id] }));
-  };
-
-  const handleCopyPassword = (id: number, pwd: string) => {
-    navigator.clipboard.writeText(pwd);
-    setCopiedId(id);
-    setTimeout(() => setCopiedId(null), 2000);
-  };
 
   // Create User Modal
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
@@ -56,13 +40,17 @@ export const UsersPage: React.FC = () => {
   const [editUserId, setEditUserId] = useState<number | null>(null);
   const [editFullName, setEditFullName] = useState('');
   const [editEmail, setEditEmail] = useState('');
-  const [editPassword, setEditPassword] = useState('');
   const [editRole, setEditRole] = useState('ROLE_EMPLOYEE');
   const [editTeamTag, setEditTeamTag] = useState('FRONTEND');
   const [editPhone, setEditPhone] = useState('');
   const [editIsActive, setEditIsActive] = useState(true);
 
-  // Delete User Confirmation Modal
+  // Reset Password Modal
+  const [isResetModalOpen, setIsResetModalOpen] = useState(false);
+  const [userForReset, setUserForReset] = useState<User | null>(null);
+  const [resetPasswordInput, setResetPasswordInput] = useState('Welcome123!');
+
+  // Deactivate / Soft Delete Modal
   const [userToDelete, setUserToDelete] = useState<User | null>(null);
 
   // Toast
@@ -100,12 +88,12 @@ export const UsersPage: React.FC = () => {
     e.preventDefault();
     try {
       const created = await userApi.createUser({
-        email: newEmail,
-        fullName: newFullName,
+        email: newEmail.trim().toLowerCase(),
+        fullName: newFullName.trim(),
         roleName: newRole,
         teamTag: newTeamTag,
-        tempPassword: newTempPassword,
-        phone: newPhone,
+        tempPassword: newTempPassword.trim(),
+        phone: newPhone.trim(),
       });
       setUsers((prev) => [...prev, created]);
       setIsCreateModalOpen(false);
@@ -121,7 +109,6 @@ export const UsersPage: React.FC = () => {
     setEditUserId(u.id);
     setEditFullName(u.fullName);
     setEditEmail(u.email);
-    setEditPassword('');
     setEditRole(u.roleName);
     setEditTeamTag(u.teamTag || 'FRONTEND');
     setEditPhone(u.phone || '');
@@ -134,23 +121,16 @@ export const UsersPage: React.FC = () => {
     if (!editUserId) return;
     try {
       const payload: any = {
-        fullName: editFullName,
-        email: editEmail,
+        fullName: editFullName.trim(),
+        email: editEmail.trim().toLowerCase(),
         roleName: editRole,
         teamTag: editTeamTag,
-        phone: editPhone,
+        phone: editPhone.trim(),
         isActive: editIsActive,
       };
-      if (editPassword.trim()) {
-        payload.password = editPassword.trim();
-      }
       const updated = await userApi.updateUser(editUserId, payload);
       setUsers((prev) =>
-        prev.map((u) =>
-          u.id === updated.id
-            ? { ...u, ...updated, initialPassword: editPassword.trim() || updated.initialPassword || u.initialPassword }
-            : u
-        )
+        prev.map((u) => (u.id === updated.id ? { ...u, ...updated } : u))
       );
       setIsEditUserModalOpen(false);
       showToast(`User ${updated.fullName} updated successfully!`);
@@ -159,14 +139,34 @@ export const UsersPage: React.FC = () => {
     }
   };
 
-  const handleDeleteUser = async (userId: number) => {
+  const openResetModal = (u: User) => {
+    setUserForReset(u);
+    setResetPasswordInput('Welcome123!');
+    setIsResetModalOpen(true);
+  };
+
+  const handleResetPasswordSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!userForReset) return;
+    try {
+      await userApi.resetPassword(userForReset.id, resetPasswordInput.trim());
+      setIsResetModalOpen(false);
+      showToast(`Password successfully reset for ${userForReset.fullName}`);
+    } catch (err: any) {
+      alert(err.response?.data?.message || 'Failed to reset password');
+    }
+  };
+
+  const handleSoftDeleteUser = async (userId: number) => {
     try {
       await userApi.deleteUser(userId);
-      setUsers((prev) => prev.filter((u) => u.id !== userId));
+      setUsers((prev) =>
+        prev.map((u) => (u.id === userId ? { ...u, isActive: false } : u))
+      );
       setUserToDelete(null);
-      showToast('Employee account removed and logged to audit trail.');
+      showToast('Employee account deactivated and logged to audit trail.');
     } catch (err: any) {
-      alert(err.response?.data?.message || 'Failed to delete user');
+      alert(err.response?.data?.message || 'Failed to deactivate user');
     }
   };
 
@@ -194,20 +194,18 @@ export const UsersPage: React.FC = () => {
         prev.map((u) => (u.id === selectedUser.id ? { ...u, permissions: selectedPerms } : u))
       );
       setSelectedUser(null);
-      alert('Fine-grained permissions updated and audited!');
+      showToast('Permissions updated and logged to audit trail!');
     } catch (e) {
       console.error(e);
     }
   };
 
-  // Group permissions by module
   const groupedPerms = permissions.reduce((acc, p) => {
     if (!acc[p.module]) acc[p.module] = [];
     acc[p.module].push(p);
     return acc;
   }, {} as Record<string, typeof permissions>);
 
-  // Access check: Employees cannot view team management
   if (currentUser?.roleName === 'ROLE_EMPLOYEE') {
     return (
       <div className="p-12 max-w-xl mx-auto text-center space-y-4">
@@ -251,7 +249,7 @@ export const UsersPage: React.FC = () => {
         )}
       </div>
 
-      {/* Users Table */}
+      {/* Users Table - Zero password exposure */}
       <div className="bg-white rounded-2xl border border-border-custom shadow-xs overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-left text-xs">
@@ -259,137 +257,100 @@ export const UsersPage: React.FC = () => {
               <tr>
                 <th className="px-5 py-3.5">Employee</th>
                 <th className="px-5 py-3.5">Corporate Email</th>
-                <th className="px-5 py-3.5">Login Password</th>
                 <th className="px-5 py-3.5">Role</th>
-                <th className="px-5 py-3.5">Team Tag</th>
+                <th className="px-5 py-3.5">Department</th>
                 <th className="px-5 py-3.5">Status</th>
                 <th className="px-5 py-3.5 text-right">Access Controls</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-border-custom">
-              {users.map((u) => {
-                // Password visibility rule:
-                // Admin can see everyone's password.
-                // Manager can see password of Managers and Employees (not Admin).
-                const isTargetAdmin = u.roleName === 'ROLE_ADMIN';
-                const canSeePassword = currentUser?.roleName === 'ROLE_ADMIN' || (currentUser?.roleName === 'ROLE_MANAGER' && !isTargetAdmin);
-                const pwd = u.initialPassword || (u.email === 'payaldjadhao@gmail.com' ? '1234' : '••••••');
-                const isRevealed = !!showPasswordMap[u.id];
+              {users.map((u) => (
+                <tr key={u.id} className="hover:bg-purple-50/40 transition-colors">
+                  <td className="px-5 py-4 font-bold text-text-primary flex items-center gap-2.5">
+                    <div className="w-7 h-7 rounded-full bg-purple-100 text-primary font-bold text-xs flex items-center justify-center border border-purple-200">
+                      {u.fullName.slice(0, 2).toUpperCase()}
+                    </div>
+                    <span>{u.fullName}</span>
+                  </td>
+                  <td className="px-5 py-4 text-text-secondary font-mono">{u.email}</td>
 
-                return (
-                  <tr key={u.id} className="hover:bg-purple-50/40 transition-colors">
-                    <td className="px-5 py-4 font-bold text-text-primary flex items-center gap-2.5">
-                      <div className="w-7 h-7 rounded-full bg-purple-100 text-primary font-bold text-xs flex items-center justify-center border border-purple-200">
-                        {u.fullName.slice(0, 2).toUpperCase()}
-                      </div>
-                      <span>{u.fullName}</span>
-                    </td>
-                    <td className="px-5 py-4 text-text-secondary font-mono">{u.email}</td>
-                    
-                    {/* Password Column */}
-                    <td className="px-5 py-4">
-                      {canSeePassword ? (
-                        <div className="flex items-center gap-2">
-                          <span className="font-mono text-xs px-2 py-1 bg-gray-50 border border-gray-200 rounded-md text-text-primary font-semibold select-all">
-                            {isRevealed ? pwd : '••••••••••••'}
-                          </span>
-                          <button
-                            type="button"
-                            onClick={() => toggleShowPassword(u.id)}
-                            className="p-1 hover:bg-purple-100 text-text-secondary hover:text-primary rounded cursor-pointer transition-colors"
-                            title={isRevealed ? 'Hide Password' : 'Show Password'}
-                          >
-                            {isRevealed ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => handleCopyPassword(u.id, pwd)}
-                            className="p-1 hover:bg-purple-100 text-text-secondary hover:text-primary rounded cursor-pointer transition-colors"
-                            title="Copy Password"
-                          >
-                            {copiedId === u.id ? (
-                              <Check className="w-3.5 h-3.5 text-emerald-600" />
-                            ) : (
-                              <Copy className="w-3.5 h-3.5" />
-                            )}
-                          </button>
-                        </div>
-                      ) : (
-                        <span className="text-[11px] text-gray-400 italic">Protected (Admin)</span>
-                      )}
-                    </td>
-
-                    <td className="px-5 py-4">
-                      <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-purple-100 text-primary uppercase">
-                        {u.roleName.replace('ROLE_', '')}
+                  <td className="px-5 py-4">
+                    <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-purple-100 text-primary uppercase">
+                      {u.roleName.replace('ROLE_', '')}
+                    </span>
+                  </td>
+                  <td className="px-5 py-4">
+                    <TeamTagChip tag={u.teamTag} />
+                  </td>
+                  <td className="px-5 py-4">
+                    {u.isActive ? (
+                      <span className="inline-flex items-center gap-1 text-emerald-600 font-bold text-[11px]">
+                        <CheckCircle className="w-3.5 h-3.5" /> Active
                       </span>
-                    </td>
-                    <td className="px-5 py-4">
-                      <TeamTagChip tag={u.teamTag} />
-                    </td>
-                    <td className="px-5 py-4">
-                      {u.isActive ? (
-                        <span className="inline-flex items-center gap-1 text-emerald-600 font-bold text-[11px]">
-                          <CheckCircle className="w-3.5 h-3.5" /> Active
-                        </span>
-                      ) : (
-                        <span className="inline-flex items-center gap-1 text-rose-600 font-bold text-[11px]">
-                          <XCircle className="w-3.5 h-3.5" /> Deactivated
-                        </span>
-                      )}
-                    </td>
-                    <td className="px-5 py-4 text-right space-x-1.5 whitespace-nowrap">
-                      {currentUser?.roleName === 'ROLE_ADMIN' ? (
-                        <>
-                          <button
-                            onClick={() => openEditUser(u)}
-                            className="px-2 py-1 bg-purple-50 hover:bg-purple-100 text-primary font-bold rounded-lg border border-purple-200 transition-colors cursor-pointer"
-                            title="Edit User Info / Credentials"
-                          >
-                            <Edit3 className="w-3.5 h-3.5 inline mr-1" /> Edit
-                          </button>
-                          <button
-                            onClick={() => openPermissionMatrix(u)}
-                            className="px-2 py-1 bg-purple-50 hover:bg-purple-100 text-primary font-bold rounded-lg border border-purple-200 transition-colors cursor-pointer"
-                            title="Fine-grained permissions"
-                          >
-                            <Sliders className="w-3.5 h-3.5 inline mr-1" /> Perms
-                          </button>
-                          {u.roleName !== 'ROLE_ADMIN' && u.email !== 'payaldjadhao@gmail.com' && (
-                            <>
-                              <button
-                                onClick={() => handleToggleStatus(u.id)}
-                                className={`px-2 py-1 rounded-lg text-xs font-semibold transition-colors cursor-pointer ${
-                                  u.isActive
-                                    ? 'bg-amber-50 text-amber-700 hover:bg-amber-100 border border-amber-200'
-                                    : 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100 border border-emerald-200'
-                                }`}
-                              >
-                                {u.isActive ? 'Deactivate' : 'Activate'}
-                              </button>
-                              <button
-                                onClick={() => setUserToDelete(u)}
-                                className="px-2 py-1 bg-rose-50 hover:bg-rose-100 text-rose-600 font-bold rounded-lg border border-rose-200 transition-colors cursor-pointer"
-                                title="Delete User"
-                              >
-                                <Trash2 className="w-3.5 h-3.5 inline mr-1" /> Delete
-                              </button>
-                            </>
-                          )}
-                        </>
-                      ) : (
-                        <span className="text-[11px] text-gray-400 italic">View Only</span>
-                      )}
-                    </td>
-                  </tr>
-                );
-              })}
+                    ) : (
+                      <span className="inline-flex items-center gap-1 text-rose-600 font-bold text-[11px]">
+                        <XCircle className="w-3.5 h-3.5" /> Deactivated
+                      </span>
+                    )}
+                  </td>
+                  <td className="px-5 py-4 text-right space-x-1.5 whitespace-nowrap">
+                    {currentUser?.roleName === 'ROLE_ADMIN' ? (
+                      <>
+                        <button
+                          onClick={() => openResetModal(u)}
+                          className="px-2.5 py-1 bg-amber-50 hover:bg-amber-100 text-amber-800 font-bold rounded-lg border border-amber-200 transition-colors cursor-pointer text-xs"
+                          title="Reset Password"
+                        >
+                          <Key className="w-3.5 h-3.5 inline mr-1" /> Reset Password
+                        </button>
+                        <button
+                          onClick={() => openEditUser(u)}
+                          className="px-2 py-1 bg-purple-50 hover:bg-purple-100 text-primary font-bold rounded-lg border border-purple-200 transition-colors cursor-pointer"
+                          title="Edit User Info"
+                        >
+                          <Edit3 className="w-3.5 h-3.5 inline mr-1" /> Edit
+                        </button>
+                        <button
+                          onClick={() => openPermissionMatrix(u)}
+                          className="px-2 py-1 bg-purple-50 hover:bg-purple-100 text-primary font-bold rounded-lg border border-purple-200 transition-colors cursor-pointer"
+                          title="Fine-grained permissions"
+                        >
+                          <Sliders className="w-3.5 h-3.5 inline mr-1" /> Perms
+                        </button>
+                        {u.roleName !== 'ROLE_ADMIN' && u.email !== 'payaldjadhao@gmail.com' && (
+                          <>
+                            <button
+                              onClick={() => handleToggleStatus(u.id)}
+                              className={`px-2 py-1 rounded-lg text-xs font-semibold transition-colors cursor-pointer ${
+                                u.isActive
+                                  ? 'bg-amber-50 text-amber-700 hover:bg-amber-100 border border-amber-200'
+                                  : 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100 border border-emerald-200'
+                              }`}
+                            >
+                              {u.isActive ? 'Deactivate' : 'Activate'}
+                            </button>
+                            <button
+                              onClick={() => setUserToDelete(u)}
+                              className="px-2 py-1 bg-rose-50 hover:bg-rose-100 text-rose-600 font-bold rounded-lg border border-rose-200 transition-colors cursor-pointer"
+                              title="Soft Delete"
+                            >
+                              <Trash2 className="w-3.5 h-3.5 inline" />
+                            </button>
+                          </>
+                        )}
+                      </>
+                    ) : (
+                      <span className="text-text-secondary text-[11px] italic">Admin restricted</span>
+                    )}
+                  </td>
+                </tr>
+              ))}
             </tbody>
           </table>
         </div>
       </div>
 
-      {/* CREATE EMPLOYEE MODAL */}
+      {/* PROVISION EMPLOYEE MODAL */}
       <Modal
         isOpen={isCreateModalOpen}
         onClose={() => setIsCreateModalOpen(false)}
@@ -397,44 +358,44 @@ export const UsersPage: React.FC = () => {
       >
         <form onSubmit={handleCreateUser} className="space-y-4 text-xs">
           <div>
-            <label className="block font-semibold mb-1">Full Name</label>
-            <input
-              type="text"
-              required
-              value={newFullName}
-              onChange={(e) => setNewFullName(e.target.value)}
-              placeholder="e.g. Sneha Reddy"
-              className="w-full px-3 py-2 bg-purple-50 rounded-lg border border-border-custom outline-none"
-            />
-          </div>
-
-          <div>
             <label className="block font-semibold mb-1">Corporate Email</label>
             <input
               type="email"
               required
               value={newEmail}
               onChange={(e) => setNewEmail(e.target.value)}
-              placeholder="sneha.reddy@teamcrm.com"
+              placeholder="employee@company.com"
+              className="w-full px-3 py-2 bg-purple-50 rounded-lg border border-border-custom outline-none"
+            />
+          </div>
+
+          <div>
+            <label className="block font-semibold mb-1">Full Name</label>
+            <input
+              type="text"
+              required
+              value={newFullName}
+              onChange={(e) => setNewFullName(e.target.value)}
+              placeholder="e.g. John Doe"
               className="w-full px-3 py-2 bg-purple-50 rounded-lg border border-border-custom outline-none"
             />
           </div>
 
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block font-semibold mb-1">Assigned Role</label>
+              <label className="block font-semibold mb-1">Role</label>
               <select
                 value={newRole}
                 onChange={(e) => setNewRole(e.target.value)}
                 className="w-full px-3 py-2 bg-purple-50 rounded-lg border border-border-custom outline-none font-semibold text-primary"
               >
                 <option value="ROLE_EMPLOYEE">Employee (Contributor)</option>
-                <option value="ROLE_MANAGER">Manager</option>
+                <option value="ROLE_MANAGER">Manager (Department)</option>
               </select>
             </div>
 
             <div>
-              <label className="block font-semibold mb-1">Team Tag</label>
+              <label className="block font-semibold mb-1">Department Tag</label>
               <select
                 value={newTeamTag}
                 onChange={(e) => setNewTeamTag(e.target.value)}
@@ -450,7 +411,7 @@ export const UsersPage: React.FC = () => {
           </div>
 
           <div>
-            <label className="block font-semibold mb-1">Temporary Password</label>
+            <label className="block font-semibold mb-1">Temporary Initial Password</label>
             <input
               type="text"
               required
@@ -459,15 +420,46 @@ export const UsersPage: React.FC = () => {
               className="w-full px-3 py-2 bg-purple-50 rounded-lg border border-border-custom outline-none font-mono"
             />
             <p className="text-[11px] text-text-secondary mt-1">
-              User will be mandated to change this password on their first login.
+              User will be required to change their password on first login.
             </p>
           </div>
 
           <button
             type="submit"
-            className="w-full py-2.5 bg-primary text-white font-bold rounded-xl shadow-xs"
+            className="w-full py-2.5 bg-primary text-white font-bold rounded-xl shadow-xs cursor-pointer"
           >
             Provision Employee
+          </button>
+        </form>
+      </Modal>
+
+      {/* RESET PASSWORD MODAL */}
+      <Modal
+        isOpen={isResetModalOpen}
+        onClose={() => setIsResetModalOpen(false)}
+        title={`Reset Password: ${userForReset?.fullName || ''}`}
+      >
+        <form onSubmit={handleResetPasswordSubmit} className="space-y-4 text-xs">
+          <div className="p-3 bg-amber-50 rounded-xl border border-amber-200 text-amber-900">
+            <span className="font-bold">Security Notice:</span> The user's password will be encrypted using BCrypt in the database. The user will be required to update it on their next login.
+          </div>
+
+          <div>
+            <label className="block font-semibold mb-1">New Temporary Password</label>
+            <input
+              type="text"
+              required
+              value={resetPasswordInput}
+              onChange={(e) => setResetPasswordInput(e.target.value)}
+              className="w-full px-3 py-2 bg-purple-50 rounded-lg border border-border-custom outline-none font-mono font-bold"
+            />
+          </div>
+
+          <button
+            type="submit"
+            className="w-full py-2.5 bg-primary text-white font-bold rounded-xl shadow-xs cursor-pointer"
+          >
+            Confirm Password Reset
           </button>
         </form>
       </Modal>
@@ -538,7 +530,7 @@ export const UsersPage: React.FC = () => {
       <Modal
         isOpen={isEditUserModalOpen}
         onClose={() => setIsEditUserModalOpen(false)}
-        title="Edit Employee Account & Credentials"
+        title="Edit Employee Account"
       >
         <form onSubmit={handleUpdateUser} className="space-y-4 text-xs">
           <div>
@@ -560,17 +552,6 @@ export const UsersPage: React.FC = () => {
               value={editEmail}
               onChange={(e) => setEditEmail(e.target.value)}
               className="w-full px-3 py-2 bg-purple-50 rounded-lg border border-border-custom outline-none"
-            />
-          </div>
-
-          <div>
-            <label className="block font-semibold mb-1">New Password (Leave blank to keep existing)</label>
-            <input
-              type="text"
-              value={editPassword}
-              onChange={(e) => setEditPassword(e.target.value)}
-              placeholder="Type new password to update..."
-              className="w-full px-3 py-2 bg-purple-50 rounded-lg border border-border-custom outline-none font-mono"
             />
           </div>
 
@@ -645,7 +626,7 @@ export const UsersPage: React.FC = () => {
         </form>
       </Modal>
 
-      {/* CONFIRM DELETE USER MODAL */}
+      {/* CONFIRM SOFT-DELETE USER MODAL */}
       {userToDelete && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-xs animate-in fade-in">
           <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl border border-border-custom space-y-4">
@@ -653,9 +634,9 @@ export const UsersPage: React.FC = () => {
               <Trash2 className="w-6 h-6" />
             </div>
             <div className="text-center space-y-1">
-              <h3 className="font-extrabold text-base text-text-primary">Delete Employee Account?</h3>
+              <h3 className="font-extrabold text-base text-text-primary">Deactivate Employee Account?</h3>
               <p className="text-xs text-text-secondary">
-                Are you sure you want to permanently remove <span className="font-bold text-text-primary">"{userToDelete.fullName}"</span> ({userToDelete.email})? This action will be logged in the company audit trail.
+                Are you sure you want to soft-delete and deactivate <span className="font-bold text-text-primary">"{userToDelete.fullName}"</span> ({userToDelete.email})? Historical tasks and time logs are preserved. This action will be logged in the company audit trail.
               </p>
             </div>
             <div className="flex gap-3 pt-2">
@@ -668,10 +649,10 @@ export const UsersPage: React.FC = () => {
               </button>
               <button
                 type="button"
-                onClick={() => handleDeleteUser(userToDelete.id)}
+                onClick={() => handleSoftDeleteUser(userToDelete.id)}
                 className="flex-1 py-2 px-4 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs shadow-xs transition-colors cursor-pointer"
               >
-                Delete Account
+                Deactivate Account
               </button>
             </div>
           </div>

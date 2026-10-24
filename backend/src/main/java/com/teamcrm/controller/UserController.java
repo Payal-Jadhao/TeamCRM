@@ -59,6 +59,17 @@ public class UserController {
         return ResponseEntity.ok().body("User deleted successfully");
     }
 
+    @PostMapping("/{id}/reset-password")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<?> resetPassword(
+            @PathVariable Long id,
+            @RequestBody(required = false) java.util.Map<String, String> payload,
+            @AuthenticationPrincipal UserDetailsImpl currentUser) {
+        String newPassword = payload != null ? payload.get("newPassword") : null;
+        userService.resetPassword(id, newPassword, currentUser != null ? currentUser.getId() : 1L);
+        return ResponseEntity.ok().body(java.util.Map.of("message", "Password reset successfully"));
+    }
+
     @PatchMapping("/{id}/toggle-status")
     @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<?> toggleUserStatus(

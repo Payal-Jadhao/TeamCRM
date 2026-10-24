@@ -28,6 +28,20 @@ export interface AuthResponse {
   permissions: string[];
 }
 
+export interface Project {
+  id: number;
+  name: string;
+  keyCode: string;
+  description?: string;
+  status: 'ACTIVE' | 'ARCHIVED';
+  ownerId?: number;
+  ownerName?: string;
+  managerIds: number[];
+  employeeIds: number[];
+  createdAt?: string;
+  updatedAt?: string;
+}
+
 export type TaskStatus = 'TODO' | 'IN_PROGRESS' | 'REVIEW' | 'DONE' | 'BLOCKED';
 export type TaskPriority = 'LOW' | 'MEDIUM' | 'HIGH' | 'URGENT';
 export type TaskType = 'FEATURE' | 'BUG' | 'QUERY' | 'CHORE';
@@ -243,6 +257,38 @@ export interface EmployeeDashboard {
   upcomingMeetings: Meeting[];
 }
 
+export interface AdminDashboard {
+  totalPipelineRevenue: number;
+  closedWonMonth: number;
+  activeSprintTasks: number;
+  totalSprintTasks: number;
+  blockedTasks: number;
+  totalLeads: number;
+  activeUsersCount: number;
+  adminCount: number;
+  managerCount: number;
+  employeeCount: number;
+  teamWorkload: { name: string; tasks: number }[];
+  dealsByStage: { stage: string; count: number }[];
+  estimatedHours: number;
+  actualHours: number;
+  varianceHours: number;
+  overdueTasks: number;
+  activeTimers: number;
+  pendingLeaves: number;
+  recentActivity: { id: number; action: string; entityName: string; actorEmail: string; newValue: string; createdAt: string }[];
+}
+
+export interface MasterItem {
+  id: number;
+  category: 'TEAM' | 'TASK_TYPE' | 'LEAD_STATUS' | 'DEAL_STAGE';
+  name: string;
+  keyCode?: string;
+  sortOrder: number;
+  isActive: boolean;
+  isDeleted: boolean;
+}
+
 export interface AuditLogItem {
   id: number;
   actorId?: number;
@@ -255,3 +301,4 @@ export interface AuditLogItem {
   ipAddress?: string;
   createdAt: string;
 }
+

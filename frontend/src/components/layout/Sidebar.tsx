@@ -11,18 +11,22 @@ import {
   ShieldCheck,
   History,
   Sparkles,
+  FolderKanban,
+  Sliders,
   X,
 } from 'lucide-react';
 
 export type NavTab =
   | 'dashboard'
+  | 'projects'
   | 'tasks'
   | 'crm'
   | 'api-handoff'
   | 'meetings'
   | 'reports'
   | 'users'
-  | 'audit';
+  | 'audit'
+  | 'settings';
 
 interface SidebarProps {
   activeTab: NavTab;
@@ -50,6 +54,12 @@ export const Sidebar: React.FC<SidebarProps> = ({
     badge?: string;
   }[] = [
       { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
+      {
+        id: 'projects',
+        label: 'Projects',
+        icon: FolderKanban,
+        requiresAdminOrManager: true,
+      },
       { id: 'tasks', label: 'Tasks', icon: CheckSquare },
       { id: 'crm', label: 'Clients & Deals', icon: Briefcase },
       { id: 'api-handoff', label: 'API Specs', icon: FileCode },
@@ -65,6 +75,12 @@ export const Sidebar: React.FC<SidebarProps> = ({
         id: 'audit',
         label: 'Activity Log',
         icon: History,
+        requiresAdminOnly: true,
+      },
+      {
+        id: 'settings',
+        label: 'Master Settings',
+        icon: Sliders,
         requiresAdminOnly: true,
       },
     ];

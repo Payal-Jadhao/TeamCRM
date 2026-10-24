@@ -54,6 +54,84 @@ public class DashboardService {
         this.auditLogRepository = auditLogRepository;
     }
 
+    public AdminDashboardDto getAdminDashboard() {
+        List<Deal> deals = dealRepository.findByIsDeletedFalseOrderByCreatedAtDesc();
+        BigDecimal totalPipeline = deals.stream()
+                .filter(d -> !"LOST".equalsIgnoreCase(d.getStage()))
+                .map(Deal::getDealValue)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        BigDecimal closedWonMonth = deals.stream()
+                .filter(d -> "WON".equalsIgnoreCase(d.getStage()))
+                .map(Deal::getDealValue)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+
+        List<Task> allTasks = taskRepository.findByIsDeletedFalse();
+        long totalSprintTasks = allTasks.size();
+        long activeSprintTasks = allTasks.stream().filter(t -> "IN_PROGRESS".equalsIgnoreCase(t.getStatus())).count();
+        long blockedTasks = allTasks.stream().filter(t -> "BLOCKED".equalsIgnoreCase(t.getStatus())).count();
+
+        long totalLeads = leadRepository.count();
+
+        List<User> activeUsers = userRepository.findByIsActiveTrue();
+        long activeUsersCount = activeUsers.size();
+        long adminCount = activeUsers.stream().filter(u -> u.getRole() != null && "ROLE_ADMIN".equalsIgnoreCase(u.getRole().getName())).count();
+        long managerCount = activeUsers.stream().filter(u -> u.getRole() != null && "ROLE_MANAGER".equalsIgnoreCase(u.getRole().getName())).count();
+        long employeeCount = activeUsers.stream().filter(u -> u.getRole() != null && "ROLE_EMPLOYEE".equalsIgnoreCase(u.getRole().getName())).count();
+
+        // Team Workload
+        Map<String, Long> workloadMap = allTasks.stream()
+                .filter(t -> t.getAssignee() != null)
+                .collect(Collectors.groupingBy(t -> t.getAssignee().getFullName(), Collectors.counting()));
+
+        List<Map<String, Object>> workloadList = workloadMap.entrySet().stream().map(e -> {
+            Map<String, Object> item = new HashMap<>();
+            item.put("name", e.getKey());
+            item.put("tasks", e.getValue());
+            return item;
+        }).collect(Collectors.toList());
+
+        // Deals By Stage
+        Map<String, Long> dealsByStageMap = deals.stream()
+                .collect(Collectors.groupingBy(Deal::getStage, Collectors.counting()));
+        List<Map<String, Object>> dealsByStageList = dealsByStageMap.entrySet().stream().map(e -> {
+            Map<String, Object> item = new HashMap<>();
+            item.put("stage", e.getKey());
+            item.put("count", e.getValue());
+            return item;
+        }).collect(Collectors.toList());
+
+        // Hours & Variance
+        BigDecimal estimatedHours = allTasks.stream()
+                .filter(t -> t.getEstimatedHours() != null)
+                .map(Task::getEstimatedHours)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+
+        long totalLoggedSeconds = timeLogRepository.findAll().stream()
+                .mapToLong(TaskTimeLog::getDurationSeconds).sum();
+        BigDecimal actualHours = BigDecimal.valueOf(totalLoggedSeconds).divide(BigDecimal.valueOf(3600), 1, java.math.RoundingMode.HALF_UP);
+        BigDecimal varianceHours = estimatedHours.subtract(actualHours);
+
+        // Recent Audit logs
+        List<Map<String, Object>> recentActivity = auditLogRepository.findTop100ByOrderByCreatedAtDesc()
+                .stream().limit(10).map(a -> {
+                    Map<String, Object> item = new HashMap<>();
+                    item.put("id", a.getId());
+                    item.put("action", a.getAction());
+                    item.put("entityName", a.getEntityName());
+                    item.put("actorEmail", a.getActorEmail());
+                    item.put("newValue", a.getNewValue());
+                    item.put("createdAt", a.getCreatedAt());
+                    return item;
+                }).collect(Collectors.toList());
+
+        return new AdminDashboardDto(
+                totalPipeline, closedWonMonth, activeSprintTasks, totalSprintTasks,
+                blockedTasks, totalLeads, activeUsersCount, adminCount, managerCount, employeeCount,
+                workloadList, dealsByStageList, estimatedHours, actualHours, varianceHours,
+                2L, 1L, 0L, recentActivity
+        );
+    }
+
     public ManagerDashboardDto getManagerDashboard() {
         long totalProjects = projectRepository.count();
         List<Task> allTasks = taskRepository.findByIsDeletedFalse();

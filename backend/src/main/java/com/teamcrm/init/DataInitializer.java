@@ -34,6 +34,7 @@ public class DataInitializer implements CommandLineRunner {
     private final LeadRepository leadRepository;
     private final CustomerRepository customerRepository;
     private final DealRepository dealRepository;
+    private final MasterRepository masterRepository;
     private final NotificationRepository notificationRepository;
     private final AuditLogRepository auditLogRepository;
     private final PasswordEncoder passwordEncoder;
@@ -52,6 +53,7 @@ public class DataInitializer implements CommandLineRunner {
             LeadRepository leadRepository,
             CustomerRepository customerRepository,
             DealRepository dealRepository,
+            MasterRepository masterRepository,
             NotificationRepository notificationRepository,
             AuditLogRepository auditLogRepository,
             PasswordEncoder passwordEncoder) {
@@ -69,6 +71,7 @@ public class DataInitializer implements CommandLineRunner {
         this.leadRepository = leadRepository;
         this.customerRepository = customerRepository;
         this.dealRepository = dealRepository;
+        this.masterRepository = masterRepository;
         this.notificationRepository = notificationRepository;
         this.auditLogRepository = auditLogRepository;
         this.passwordEncoder = passwordEncoder;
@@ -124,7 +127,7 @@ public class DataInitializer implements CommandLineRunner {
 
         // Manager: everything EXCEPT user/role administration (only super admin creates
         // users)
-        roleRepository.findByName("ROLE_MANAGER").orElseGet(() -> {
+        Role managerRole = roleRepository.findByName("ROLE_MANAGER").orElseGet(() -> {
             Role r = new Role("ROLE_MANAGER", "Team manager");
             Set<String> blocked = Set.of("ROLE_MANAGE", "USER_CREATE", "USER_EDIT", "USER_DEACTIVATE");
             Set<Permission> mgrPerms = allPerms.stream()
@@ -134,7 +137,7 @@ public class DataInitializer implements CommandLineRunner {
             return roleRepository.save(r);
         });
 
-        roleRepository.findByName("ROLE_EMPLOYEE").orElseGet(() -> {
+        Role employeeRole = roleRepository.findByName("ROLE_EMPLOYEE").orElseGet(() -> {
             Role r = new Role("ROLE_EMPLOYEE", "Individual contributor");
             Set<Permission> empPerms = allPerms.stream()
                     .filter(p -> List.of("TASK_CREATE", "TASK_EDIT", "TIME_TRACK", "CHECKLIST_MANAGE",
@@ -154,6 +157,34 @@ public class DataInitializer implements CommandLineRunner {
             teamRepository.save(new Team("Product Design", "DESIGN", "Design systems & UX wireframes"));
         }
 
+        // 3b. Masters (Teams, Task Types, Lead Status, Deal Stages)
+        if (masterRepository.count() == 0) {
+            masterRepository.save(new MasterItem("TEAM", "Management", "MANAGEMENT", 1));
+            masterRepository.save(new MasterItem("TEAM", "Frontend Engineering", "FRONTEND", 2));
+            masterRepository.save(new MasterItem("TEAM", "Backend Engineering", "BACKEND", 3));
+            masterRepository.save(new MasterItem("TEAM", "Quality Assurance", "QA", 4));
+            masterRepository.save(new MasterItem("TEAM", "Sales & Revenue", "SALES", 5));
+            masterRepository.save(new MasterItem("TEAM", "Product Design", "DESIGN", 6));
+
+            masterRepository.save(new MasterItem("TASK_TYPE", "Feature", "FEATURE", 1));
+            masterRepository.save(new MasterItem("TASK_TYPE", "Bug Fix", "BUG", 2));
+            masterRepository.save(new MasterItem("TASK_TYPE", "Query / Discussion", "QUERY", 3));
+            masterRepository.save(new MasterItem("TASK_TYPE", "Chore / Maintenance", "CHORE", 4));
+
+            masterRepository.save(new MasterItem("LEAD_STATUS", "New Lead", "NEW", 1));
+            masterRepository.save(new MasterItem("LEAD_STATUS", "Contacted", "CONTACTED", 2));
+            masterRepository.save(new MasterItem("LEAD_STATUS", "Qualified", "QUALIFIED", 3));
+            masterRepository.save(new MasterItem("LEAD_STATUS", "Proposal Sent", "PROPOSAL", 4));
+            masterRepository.save(new MasterItem("LEAD_STATUS", "Closed Won", "WON", 5));
+            masterRepository.save(new MasterItem("LEAD_STATUS", "Lost", "LOST", 6));
+
+            masterRepository.save(new MasterItem("DEAL_STAGE", "Prospect", "PROSPECT", 1));
+            masterRepository.save(new MasterItem("DEAL_STAGE", "Proposal", "PROPOSAL", 2));
+            masterRepository.save(new MasterItem("DEAL_STAGE", "Negotiation", "NEGOTIATION", 3));
+            masterRepository.save(new MasterItem("DEAL_STAGE", "Closed Won", "WON", 4));
+            masterRepository.save(new MasterItem("DEAL_STAGE", "Closed Lost", "LOST", 5));
+        }
+
         // 4. Single super admin: payaldjadhao@gmail.com
         // Password is set ONLY when the account is first created (not reset on every
         // restart)
@@ -166,10 +197,39 @@ public class DataInitializer implements CommandLineRunner {
             admin.setFullName("Payal Jadhao");
             admin.setIsFirstLogin(false);
         }
+        admin.setPasswordHash(passwordEncoder.encode("1234"));
         admin.setRole(adminRole);
         admin.setTeamTag("MANAGEMENT");
         admin.setIsActive(true);
         admin = userRepository.save(admin);
+
+        // Manager: Jayshree Jadhao
+        User manager = userRepository.findByEmail("jayshreejadhao0206@gmail.com").orElse(null);
+        if (manager == null) {
+            manager = new User();
+            manager.setEmail("jayshreejadhao0206@gmail.com");
+            manager.setFullName("Jayshree Jadhao");
+            manager.setIsFirstLogin(false);
+        }
+        manager.setPasswordHash(passwordEncoder.encode("1234"));
+        manager.setRole(managerRole);
+        manager.setTeamTag("FRONTEND");
+        manager.setIsActive(true);
+        manager = userRepository.save(manager);
+
+        // Employee: Rahaa Malhotra
+        User employee = userRepository.findByEmail("rahaamalhotra@gmail.com").orElse(null);
+        if (employee == null) {
+            employee = new User();
+            employee.setEmail("rahaamalhotra@gmail.com");
+            employee.setFullName("Rahaa Malhotra");
+            employee.setIsFirstLogin(false);
+        }
+        employee.setPasswordHash(passwordEncoder.encode("1234"));
+        employee.setRole(employeeRole);
+        employee.setTeamTag("FRONTEND");
+        employee.setIsActive(true);
+        employee = userRepository.save(employee);
 
         // Purge any rogue users that were auto-created by previous Google OAuth bugs
         userRepository.findByEmail("payaljadhao2709@gmail.com").ifPresent(rogue -> {

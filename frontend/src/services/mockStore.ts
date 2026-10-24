@@ -1,5 +1,6 @@
 import {
   User,
+  Project,
   Task,
   ChecklistItem,
   TimeLog,
@@ -34,7 +35,78 @@ export const INITIAL_USERS: User[] = [
       'API_DOC_PUBLISH', 'API_DOC_REVIEW', 'MEETING_SCHEDULE', 'MEETING_EDIT_NOTES',
       'LEAD_VIEW_ALL', 'LEAD_MANAGE', 'DEAL_MANAGE', 'REPORT_VIEW', 'AUDIT_VIEW'
     ]
+  },
+  {
+    id: 3,
+    email: 'jayshreejadhao0206@gmail.com',
+    fullName: 'Jayshree Jadhao',
+    roleName: 'ROLE_MANAGER',
+    teamTag: 'FRONTEND',
+    initialPassword: 'Pass@123321',
+    isActive: true,
+    isFirstLogin: false,
+    permissions: [
+      'ROLE_MANAGER', 'USER_EDIT', 'TASK_CREATE', 'TASK_ASSIGN', 'TASK_EDIT',
+      'TIME_TRACK', 'TIME_EDIT_MANUAL', 'CHECKLIST_MANAGE', 'DISCUSSION_POST',
+      'API_DOC_REVIEW', 'MEETING_SCHEDULE', 'MEETING_EDIT_NOTES', 'LEAD_MANAGE', 'REPORT_VIEW'
+    ]
+  },
+  {
+    id: 4,
+    email: 'rahaamalhotra@gmail.com',
+    fullName: 'Rahaa Malhotra',
+    roleName: 'ROLE_EMPLOYEE',
+    teamTag: 'FRONTEND',
+    initialPassword: 'Pass#123',
+    isActive: true,
+    isFirstLogin: false,
+    permissions: [
+      'ROLE_EMPLOYEE', 'TASK_CREATE', 'TASK_EDIT', 'TIME_TRACK', 'CHECKLIST_MANAGE',
+      'DISCUSSION_POST', 'MEETING_SCHEDULE'
+    ]
   }
+];
+
+export const INITIAL_PROJECTS: Project[] = [
+  {
+    id: 1,
+    name: 'TeamCRM Core Platform',
+    keyCode: 'CRM',
+    description: 'Integrated corporate CRM, Jira-lite tasks, server-side time tracking and API handoff.',
+    status: 'ACTIVE',
+    ownerId: 1,
+    ownerName: 'Payal Jadhao',
+    managerIds: [3],
+    employeeIds: [4],
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  },
+  {
+    id: 2,
+    name: 'Enterprise Mobile App',
+    keyCode: 'MOB',
+    description: 'Cross-platform iOS and Android mobile app for field enterprise agents.',
+    status: 'ACTIVE',
+    ownerId: 1,
+    ownerName: 'Payal Jadhao',
+    managerIds: [3],
+    employeeIds: [4],
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  },
+  {
+    id: 3,
+    name: 'AI Analytics & Automation',
+    keyCode: 'AI',
+    description: 'Predictive sales analytics, pipeline forecasting and lead scoring ML pipeline.',
+    status: 'ACTIVE',
+    ownerId: 1,
+    ownerName: 'Payal Jadhao',
+    managerIds: [3],
+    employeeIds: [4],
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  },
 ];
 
 const ALL_PERMISSIONS = [
@@ -69,6 +141,8 @@ const ALL_PERMISSIONS = [
 const INITIAL_TASKS: Task[] = [
   {
     id: 101,
+    projectId: 1,
+    projectName: 'TeamCRM Core Platform',
     taskCode: 'CRM-101',
     title: 'Finalize OAuth2 Google Sign-in flow and RBAC',
     type: 'FEATURE',
@@ -88,6 +162,8 @@ const INITIAL_TASKS: Task[] = [
   },
   {
     id: 102,
+    projectId: 1,
+    projectName: 'TeamCRM Core Platform',
     taskCode: 'CRM-102',
     title: 'Integrate Server-Side Anti-Tamper Time Tracker',
     type: 'FEATURE',
@@ -107,6 +183,8 @@ const INITIAL_TASKS: Task[] = [
   },
   {
     id: 103,
+    projectId: 1,
+    projectName: 'TeamCRM Core Platform',
     taskCode: 'CRM-103',
     title: 'Audit Trail and Compliance Export Service',
     type: 'FEATURE',
@@ -126,6 +204,8 @@ const INITIAL_TASKS: Task[] = [
   },
   {
     id: 104,
+    projectId: 1,
+    projectName: 'TeamCRM Core Platform',
     taskCode: 'CRM-104',
     title: 'OpenAPI Specification and Postman Collection sync',
     type: 'CHORE',
@@ -225,25 +305,29 @@ const INITIAL_AUDIT: AuditLogItem[] = [
   }
 ];
 
-function getStored<T>(key: string, defaultValue: T): T {
+const memoryStore = new Map<string, any>();
+
+// Purge any legacy business data keys from localStorage on startup
+if (typeof window !== 'undefined') {
   try {
-    const raw = localStorage.getItem(key);
-    if (!raw) {
-      localStorage.setItem(key, JSON.stringify(defaultValue));
-      return defaultValue;
-    }
-    return JSON.parse(raw);
-  } catch {
+    Object.keys(localStorage).forEach((key) => {
+      if (key.startsWith('teamcrm_store_')) {
+        localStorage.removeItem(key);
+      }
+    });
+  } catch {}
+}
+
+function getStored<T>(key: string, defaultValue: T): T {
+  if (!memoryStore.has(key)) {
+    memoryStore.set(key, defaultValue);
     return defaultValue;
   }
+  return memoryStore.get(key);
 }
 
 function setStored<T>(key: string, val: T): void {
-  try {
-    localStorage.setItem(key, JSON.stringify(val));
-  } catch (e) {
-    console.warn('LocalStorage error', e);
-  }
+  memoryStore.set(key, val);
 }
 
 export const mockStore = {
@@ -273,6 +357,15 @@ export const mockStore = {
       }
       return u;
     });
+
+    // Ensure core role users (Admin, Manager, Employee) always exist
+    for (const initU of INITIAL_USERS) {
+      if (!users.some((u) => u.email.toLowerCase() === initU.email.toLowerCase())) {
+        users.push(initU);
+        modified = true;
+      }
+    }
+
     if (modified) {
       setStored('teamcrm_store_users', users);
     }
@@ -342,10 +435,60 @@ export const mockStore = {
 
   getAllPermissions: () => ALL_PERMISSIONS,
 
+  getProjects: (): Project[] => {
+    return getStored<Project[]>('teamcrm_store_projects', INITIAL_PROJECTS);
+  },
+
+  createProject: (data: Partial<Project> & { managerIds?: number[]; employeeIds?: number[] }): Project => {
+    const projects = mockStore.getProjects();
+    const newId = projects.length > 0 ? Math.max(...projects.map((p) => p.id)) + 1 : 1;
+    const newProj: Project = {
+      id: newId,
+      name: data.name || 'New Project',
+      keyCode: (data.keyCode || 'PRJ').toUpperCase().trim(),
+      description: data.description || '',
+      status: (data.status as any) || 'ACTIVE',
+      ownerId: 1,
+      ownerName: 'Payal Jadhao',
+      managerIds: data.managerIds || [3],
+      employeeIds: data.employeeIds || [4],
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+    projects.push(newProj);
+    setStored('teamcrm_store_projects', projects);
+    return newProj;
+  },
+
+  updateProject: (id: number, data: Partial<Project> & { managerIds?: number[]; employeeIds?: number[] }): Project => {
+    const projects = mockStore.getProjects();
+    const idx = projects.findIndex((p) => p.id === id);
+    if (idx !== -1) {
+      projects[idx] = {
+        ...projects[idx],
+        ...data,
+        managerIds: data.managerIds !== undefined ? data.managerIds : projects[idx].managerIds,
+        employeeIds: data.employeeIds !== undefined ? data.employeeIds : projects[idx].employeeIds,
+        updatedAt: new Date().toISOString(),
+      };
+      setStored('teamcrm_store_projects', projects);
+      return projects[idx];
+    }
+    throw new Error('Project not found');
+  },
+
+  deleteProject: (id: number): void => {
+    const projects = mockStore.getProjects().filter((p) => p.id !== id);
+    setStored('teamcrm_store_projects', projects);
+  },
+
   getTasks: (params?: any): Task[] => {
     let tasks = getStored<Task[]>('teamcrm_store_tasks', INITIAL_TASKS);
     if (params?.status) {
       tasks = tasks.filter((t) => t.status === params.status);
+    }
+    if (params?.projectId && params.projectId !== 'ALL') {
+      tasks = tasks.filter((t) => t.projectId === Number(params.projectId));
     }
     return tasks;
   },
@@ -358,9 +501,14 @@ export const mockStore = {
 
   createTask: (data: any): Task => {
     const tasks = mockStore.getTasks();
+    const projects = mockStore.getProjects();
+    const assignedProject = projects.find((p) => p.id === Number(data.projectId)) || projects[0];
+    const projectKeyCode = assignedProject ? assignedProject.keyCode : 'CRM';
     const newTask: Task = {
       id: Date.now(),
-      taskCode: `CRM-${tasks.length + 101}`,
+      projectId: assignedProject?.id || 1,
+      projectName: assignedProject?.name || 'TeamCRM Core Platform',
+      taskCode: `${projectKeyCode}-${tasks.length + 101}`,
       title: data.title || 'Untitled Task',
       description: data.description || '',
       type: data.type || 'FEATURE',
@@ -369,10 +517,12 @@ export const mockStore = {
       assigneeId: data.assigneeId || 1,
       assigneeName: data.assigneeName || 'Payal Jadhao',
       assigneeTeam: data.assigneeTeam || 'MANAGEMENT',
+      assigneeIds: data.assigneeIds,
+      assigneeNames: data.assigneeNames,
       reporterName: 'Payal Jadhao',
       dueDate: data.dueDate || new Date().toISOString().split('T')[0],
       estimatedHours: data.estimatedHours || 4,
-      checklistMustBeCompleted: false,
+      checklistMustBeCompleted: Boolean(data.checklistMustBeCompleted),
       totalLoggedSeconds: 0,
       checklistTotal: 0,
       checklistCompleted: 0,

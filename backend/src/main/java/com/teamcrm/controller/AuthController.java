@@ -31,7 +31,7 @@ public class AuthController {
         return ResponseEntity.ok().body("Password updated successfully");
     }
 
-    @PostMapping("/forgot-password/send-otp")
+    @PostMapping({"/forgot-password", "/forgot-password/send-otp"})
     public ResponseEntity<SendOtpResponse> sendForgotPasswordOtp(@Valid @RequestBody SendOtpRequest request) {
         return ResponseEntity.ok(authService.sendForgotPasswordOtp(request));
     }

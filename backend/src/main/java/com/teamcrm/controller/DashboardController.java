@@ -1,5 +1,6 @@
 package com.teamcrm.controller;
 
+import com.teamcrm.dto.OtherDtos.AdminDashboardDto;
 import com.teamcrm.dto.OtherDtos.EmployeeDashboardDto;
 import com.teamcrm.dto.OtherDtos.ManagerDashboardDto;
 import com.teamcrm.security.UserDetailsImpl;
@@ -19,6 +20,12 @@ public class DashboardController {
 
     public DashboardController(DashboardService dashboardService) {
         this.dashboardService = dashboardService;
+    }
+
+    @GetMapping("/admin")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<AdminDashboardDto> getAdminDashboard() {
+        return ResponseEntity.ok(dashboardService.getAdminDashboard());
     }
 
     @GetMapping("/manager")
