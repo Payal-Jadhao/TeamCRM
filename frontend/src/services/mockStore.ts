@@ -23,7 +23,7 @@ export const INITIAL_USERS: User[] = [
     fullName: 'Payal Jadhao',
     roleName: 'ROLE_ADMIN',
     teamTag: 'MANAGEMENT',
-    initialPassword: '1234',
+    initialPassword: '123456',
     isActive: true,
     isFirstLogin: false,
     permissions: [
