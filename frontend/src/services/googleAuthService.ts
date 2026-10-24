@@ -34,9 +34,15 @@ export const formatNameFromEmail = (em: string): string => {
   );
 };
 
+export const DEFAULT_DEVICE_ACCOUNTS: GoogleAccountItem[] = [
+  { name: 'Payal Jadhao', email: 'payaldjadhao@gmail.com', avatarColor: '#8e24aa' },
+  { name: 'Payal Jadhao', email: 'payaljadhao2709@gmail.com', avatarColor: '#2e7d32' },
+  { name: 'Payal Jadhao', email: 'payaldj2709@gmail.com', avatarColor: '#3f51b5' },
+];
+
 export const googleAuthService = {
   /**
-   * Fetch only accounts saved on this device's browser session (no hardcoded accounts)
+   * Fetch accounts saved on this device's browser session with system fallback
    */
   getStoredDeviceAccounts: (): GoogleAccountItem[] => {
     try {
@@ -44,13 +50,14 @@ export const googleAuthService = {
       if (raw) {
         const parsed = JSON.parse(raw);
         if (Array.isArray(parsed) && parsed.length > 0) {
-          return parsed.filter((item) => item && typeof item.email === 'string' && item.email.includes('@'));
+          const valid = parsed.filter((item) => item && typeof item.email === 'string' && item.email.includes('@'));
+          if (valid.length > 0) return valid;
         }
       }
     } catch (e) {
       console.warn('Failed to parse device Google accounts', e);
     }
-    return [];
+    return DEFAULT_DEVICE_ACCOUNTS;
   },
 
   /**
