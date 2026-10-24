@@ -66,8 +66,8 @@ public class UserController {
             @RequestBody(required = false) java.util.Map<String, String> payload,
             @AuthenticationPrincipal UserDetailsImpl currentUser) {
         String newPassword = payload != null ? payload.get("newPassword") : null;
-        userService.resetPassword(id, newPassword, currentUser != null ? currentUser.getId() : 1L);
-        return ResponseEntity.ok().body(java.util.Map.of("message", "Password reset successfully"));
+        com.teamcrm.dto.AuthDtos.UserProfileDto updated = userService.resetPassword(id, newPassword, currentUser != null ? currentUser.getId() : 1L);
+        return ResponseEntity.ok().body(updated);
     }
 
     @PatchMapping("/{id}/toggle-status")

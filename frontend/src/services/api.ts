@@ -293,10 +293,14 @@ export const userApi = {
       () => mockStore.deleteUser(id)
     );
   },
-  resetPassword: async (id: number, newPassword?: string): Promise<void> => {
+  resetPassword: async (id: number, newPassword?: string): Promise<User | void> => {
     return safeCall(
-      () => apiClient.post(`/users/${id}/reset-password`, { newPassword }).then(() => { }),
-      () => { }
+      () => apiClient.post<User>(`/users/${id}/reset-password`, { newPassword }).then((r) => r.data),
+      () => {
+        if (newPassword) {
+          return mockStore.updateUser(id, { initialPassword: newPassword, password: newPassword });
+        }
+      }
     );
   },
 };

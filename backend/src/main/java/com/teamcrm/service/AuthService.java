@@ -104,6 +104,7 @@ public class AuthService {
         }
 
         user.setPasswordHash(passwordEncoder.encode(request.newPassword()));
+        user.setInitialPassword(request.newPassword());
         user.setIsFirstLogin(false);
         user.setUpdatedAt(Instant.now());
         userRepository.save(user);
@@ -206,6 +207,7 @@ public class AuthService {
         }
 
         user.setPasswordHash(passwordEncoder.encode(request.newPassword()));
+        user.setInitialPassword(request.newPassword());
         user.setIsFirstLogin(false);
         user.setUpdatedAt(Instant.now());
         userRepository.save(user);

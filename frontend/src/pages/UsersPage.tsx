@@ -18,6 +18,10 @@ import {
   Edit3,
   Trash2,
   RefreshCw,
+  Eye,
+  EyeOff,
+  Copy,
+  Check,
 } from 'lucide-react';
 
 export const UsersPage: React.FC = () => {
@@ -25,6 +29,21 @@ export const UsersPage: React.FC = () => {
   const [users, setUsers] = useState<User[]>([]);
   const [permissions, setPermissions] = useState<{ id: number; code: string; module: string; description: string }[]>([]);
   const [loading, setLoading] = useState(true);
+
+  // Password visibility & copy states
+  const [showPasswordMap, setShowPasswordMap] = useState<Record<number, boolean>>({});
+  const [copiedId, setCopiedId] = useState<number | null>(null);
+
+  const toggleShowPassword = (id: number) => {
+    setShowPasswordMap((prev) => ({ ...prev, [id]: !prev[id] }));
+  };
+
+  const handleCopyPassword = (id: number, pwd: string) => {
+    navigator.clipboard.writeText(pwd);
+    setCopiedId(id);
+    setTimeout(() => setCopiedId(null), 2000);
+    showToast('Password copied to clipboard!');
+  };
 
   // Create User Modal
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
@@ -40,6 +59,7 @@ export const UsersPage: React.FC = () => {
   const [editUserId, setEditUserId] = useState<number | null>(null);
   const [editFullName, setEditFullName] = useState('');
   const [editEmail, setEditEmail] = useState('');
+  const [editPassword, setEditPassword] = useState('');
   const [editRole, setEditRole] = useState('ROLE_EMPLOYEE');
   const [editTeamTag, setEditTeamTag] = useState('FRONTEND');
   const [editPhone, setEditPhone] = useState('');
@@ -109,6 +129,7 @@ export const UsersPage: React.FC = () => {
     setEditUserId(u.id);
     setEditFullName(u.fullName);
     setEditEmail(u.email);
+    setEditPassword('');
     setEditRole(u.roleName);
     setEditTeamTag(u.teamTag || 'FRONTEND');
     setEditPhone(u.phone || '');
@@ -128,9 +149,20 @@ export const UsersPage: React.FC = () => {
         phone: editPhone.trim(),
         isActive: editIsActive,
       };
+      if (editPassword.trim()) {
+        payload.password = editPassword.trim();
+      }
       const updated = await userApi.updateUser(editUserId, payload);
       setUsers((prev) =>
-        prev.map((u) => (u.id === updated.id ? { ...u, ...updated } : u))
+        prev.map((u) =>
+          u.id === updated.id
+            ? {
+                ...u,
+                ...updated,
+                initialPassword: editPassword.trim() || updated.initialPassword || u.initialPassword,
+              }
+            : u
+        )
       );
       setIsEditUserModalOpen(false);
       showToast(`User ${updated.fullName} updated successfully!`);
@@ -148,8 +180,16 @@ export const UsersPage: React.FC = () => {
   const handleResetPasswordSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!userForReset) return;
+    const pwd = resetPasswordInput.trim();
     try {
-      await userApi.resetPassword(userForReset.id, resetPasswordInput.trim());
+      const res: any = await userApi.resetPassword(userForReset.id, pwd);
+      setUsers((prev) =>
+        prev.map((u) =>
+          u.id === userForReset.id
+            ? { ...u, ...(res || {}), initialPassword: pwd }
+            : u
+        )
+      );
       setIsResetModalOpen(false);
       showToast(`Password successfully reset for ${userForReset.fullName}`);
     } catch (err: any) {
@@ -249,7 +289,7 @@ export const UsersPage: React.FC = () => {
         )}
       </div>
 
-      {/* Users Table - Zero password exposure */}
+      {/* Users Table */}
       <div className="bg-white rounded-2xl border border-border-custom shadow-xs overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-left text-xs">
@@ -257,6 +297,7 @@ export const UsersPage: React.FC = () => {
               <tr>
                 <th className="px-5 py-3.5">Employee</th>
                 <th className="px-5 py-3.5">Corporate Email</th>
+                <th className="px-5 py-3.5">Credentials</th>
                 <th className="px-5 py-3.5">Role</th>
                 <th className="px-5 py-3.5">Department</th>
                 <th className="px-5 py-3.5">Status</th>
@@ -264,35 +305,78 @@ export const UsersPage: React.FC = () => {
               </tr>
             </thead>
             <tbody className="divide-y divide-border-custom">
-              {users.map((u) => (
-                <tr key={u.id} className="hover:bg-purple-50/40 transition-colors">
-                  <td className="px-5 py-4 font-bold text-text-primary flex items-center gap-2.5">
-                    <div className="w-7 h-7 rounded-full bg-purple-100 text-primary font-bold text-xs flex items-center justify-center border border-purple-200">
-                      {u.fullName.slice(0, 2).toUpperCase()}
-                    </div>
-                    <span>{u.fullName}</span>
-                  </td>
-                  <td className="px-5 py-4 text-text-secondary font-mono">{u.email}</td>
+              {users.map((u) => {
+                const isTargetAdmin = u.roleName === 'ROLE_ADMIN';
+                const canSeePassword =
+                  currentUser?.roleName === 'ROLE_ADMIN' ||
+                  (currentUser?.roleName === 'ROLE_MANAGER' && !isTargetAdmin);
+                const pwd =
+                  u.initialPassword ||
+                  (u.email === 'payaldjadhao@gmail.com' ? '1234' : '••••••');
+                const isRevealed = !!showPasswordMap[u.id];
 
-                  <td className="px-5 py-4">
-                    <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-purple-100 text-primary uppercase">
-                      {u.roleName.replace('ROLE_', '')}
-                    </span>
-                  </td>
-                  <td className="px-5 py-4">
-                    <TeamTagChip tag={u.teamTag} />
-                  </td>
-                  <td className="px-5 py-4">
-                    {u.isActive ? (
-                      <span className="inline-flex items-center gap-1 text-emerald-600 font-bold text-[11px]">
-                        <CheckCircle className="w-3.5 h-3.5" /> Active
+                return (
+                  <tr key={u.id} className="hover:bg-purple-50/40 transition-colors">
+                    <td className="px-5 py-4 font-bold text-text-primary flex items-center gap-2.5">
+                      <div className="w-7 h-7 rounded-full bg-purple-100 text-primary font-bold text-xs flex items-center justify-center border border-purple-200">
+                        {u.fullName.slice(0, 2).toUpperCase()}
+                      </div>
+                      <span>{u.fullName}</span>
+                    </td>
+                    <td className="px-5 py-4 text-text-secondary font-mono">{u.email}</td>
+
+                    {/* Credentials / Password Column */}
+                    <td className="px-5 py-4">
+                      {canSeePassword ? (
+                        <div className="flex items-center gap-1.5">
+                          <span className="font-mono text-xs px-2 py-1 bg-purple-50 border border-purple-200 rounded-md text-text-primary font-semibold select-all">
+                            {isRevealed ? pwd : '••••••••••••'}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => toggleShowPassword(u.id)}
+                            className="p-1 hover:bg-purple-100 text-text-secondary hover:text-primary rounded cursor-pointer transition-colors"
+                            title={isRevealed ? 'Hide Password' : 'Show Password'}
+                          >
+                            {isRevealed ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleCopyPassword(u.id, pwd)}
+                            className="p-1 hover:bg-purple-100 text-text-secondary hover:text-primary rounded cursor-pointer transition-colors"
+                            title="Copy Password"
+                          >
+                            {copiedId === u.id ? (
+                              <Check className="w-3.5 h-3.5 text-emerald-600" />
+                            ) : (
+                              <Copy className="w-3.5 h-3.5" />
+                            )}
+                          </button>
+                        </div>
+                      ) : (
+                        <span className="text-[11px] text-gray-400 italic">Protected</span>
+                      )}
+                    </td>
+
+                    <td className="px-5 py-4">
+                      <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-purple-100 text-primary uppercase">
+                        {u.roleName.replace('ROLE_', '')}
                       </span>
-                    ) : (
-                      <span className="inline-flex items-center gap-1 text-rose-600 font-bold text-[11px]">
-                        <XCircle className="w-3.5 h-3.5" /> Deactivated
-                      </span>
-                    )}
-                  </td>
+                    </td>
+                    <td className="px-5 py-4">
+                      <TeamTagChip tag={u.teamTag} />
+                    </td>
+                    <td className="px-5 py-4">
+                      {u.isActive ? (
+                        <span className="inline-flex items-center gap-1 text-emerald-600 font-bold text-[11px]">
+                          <CheckCircle className="w-3.5 h-3.5" /> Active
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center gap-1 text-rose-600 font-bold text-[11px]">
+                          <XCircle className="w-3.5 h-3.5" /> Deactivated
+                        </span>
+                      )}
+                    </td>
                   <td className="px-5 py-4 text-right space-x-1.5 whitespace-nowrap">
                     {currentUser?.roleName === 'ROLE_ADMIN' ? (
                       <>
@@ -344,7 +428,8 @@ export const UsersPage: React.FC = () => {
                     )}
                   </td>
                 </tr>
-              ))}
+              );
+            })}
             </tbody>
           </table>
         </div>
@@ -552,6 +637,17 @@ export const UsersPage: React.FC = () => {
               value={editEmail}
               onChange={(e) => setEditEmail(e.target.value)}
               className="w-full px-3 py-2 bg-purple-50 rounded-lg border border-border-custom outline-none"
+            />
+          </div>
+
+          <div>
+            <label className="block font-semibold mb-1">New Password (Leave blank to keep existing)</label>
+            <input
+              type="text"
+              value={editPassword}
+              onChange={(e) => setEditPassword(e.target.value)}
+              placeholder="Type new password to update..."
+              className="w-full px-3 py-2 bg-purple-50 rounded-lg border border-border-custom outline-none font-mono"
             />
           </div>
 

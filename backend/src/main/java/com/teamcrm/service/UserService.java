@@ -193,6 +193,7 @@ public class UserService {
         if (request.password() != null && !request.password().isBlank()) {
             user.setPasswordHash(passwordEncoder.encode(request.password().trim()));
             user.setInitialPassword(request.password().trim());
+            user.setIsFirstLogin(false);
         }
 
         if (request.teamTag() != null) {
@@ -263,21 +264,24 @@ public class UserService {
     }
 
     @Transactional
-    public void resetPassword(Long userId, String newPassword, Long actorId) {
+    public UserProfileDto resetPassword(Long userId, String newPassword, Long actorId) {
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "User not found"));
 
         String passwordToSet = (newPassword != null && !newPassword.trim().isBlank())
                 ? newPassword.trim() : "Welcome123!";
         user.setPasswordHash(passwordEncoder.encode(passwordToSet));
-        user.setIsFirstLogin(true);
+        user.setInitialPassword(passwordToSet);
+        user.setIsFirstLogin(false);
         user.setUpdatedAt(Instant.now());
-        userRepository.save(user);
+        User saved = userRepository.save(user);
 
         auditLogRepository.save(new AuditLog(
                 actorId, null, "USER_PASSWORD_RESET", "USER",
                 user.getId().toString(), null, "Password reset by administrator for " + user.getEmail()
         ));
+
+        return getUserById(saved.getId());
     }
 
     public List<Permission> getAllPermissions() {
@@ -314,7 +318,7 @@ public class UserService {
                 u.getIsActive(),
                 u.getIsFirstLogin(),
                 perms,
-                null
+                u.getInitialPassword() != null ? u.getInitialPassword() : (u.getEmail().equalsIgnoreCase(SUPER_ADMIN_EMAIL) ? "1234" : "••••••")
         );
     }
 }
