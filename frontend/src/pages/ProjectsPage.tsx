@@ -17,7 +17,6 @@ import {
   UserCheck,
   X,
   AlertCircle,
-  Briefcase,
   ChevronDown,
   Check
 } from 'lucide-react';
@@ -293,7 +292,6 @@ const MultiSelectUserDropdown: React.FC<MultiSelectUserDropdownProps> = ({
 export const ProjectsPage: React.FC<ProjectsPageProps> = ({ onNavigateTab }) => {
   const { user } = useAuth();
   const isAdmin = user?.roleName === 'ROLE_ADMIN';
-  const isManager = user?.roleName === 'ROLE_MANAGER';
 
   const [projects, setProjects] = useState<Project[]>([]);
   const [users, setUsers] = useState<User[]>([]);
@@ -316,10 +314,6 @@ export const ProjectsPage: React.FC<ProjectsPageProps> = ({ onNavigateTab }) => 
 
   // Quick Assignment Modal
   const [assignmentModalProject, setAssignmentModalProject] = useState<Project | null>(null);
-
-  useEffect(() => {
-    loadData();
-  }, []);
 
   const loadData = async () => {
     setLoading(true);
@@ -353,6 +347,10 @@ export const ProjectsPage: React.FC<ProjectsPageProps> = ({ onNavigateTab }) => 
       setLoading(false);
     }
   };
+
+  useEffect(() => {
+    loadData();
+  }, []);
 
   const getRole = (u: any) => (u.roleName || u.role?.name || u.role || '').toUpperCase();
   const managers = users.filter((u) => getRole(u).includes('MANAGER'));

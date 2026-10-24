@@ -7,6 +7,8 @@
 Thumbs.db
 .idea/
 .vscode/
+.settings/
+**/.settings/
 *.iml
 *.swp
 *.swo
