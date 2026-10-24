@@ -75,7 +75,7 @@ app:
     expiration-ms: 86400000 # 24 hours
     refresh-expiration-ms: 604800000 # 7 days
   cors:
-    allowed-origins: "http://localhost:5173,http://localhost:3000,http://127.0.0.1:5173"
+    allowed-origins: "http://localhost:5173,http://localhost:3000,http://127.0.0.1:5173,https://team-crm-iota.vercel.app"
   gemini:
     api-key: ${GEMINI_API_KEY:}
 
