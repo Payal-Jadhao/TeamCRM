@@ -135,7 +135,7 @@ public class AuthService {
         String email = request.email().toLowerCase().trim();
         User user = userRepository.findByEmail(email)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, 
-                        "This email address does not exist in our system. Please check your registered email."));
+                        "Your email is not registered. Contact admin."));
 
         if (user.getIsActive() != null && !user.getIsActive()) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, 

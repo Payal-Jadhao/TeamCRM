@@ -97,7 +97,9 @@ export const LoginPage: React.FC = () => {
       if (
         errMsg.toLowerCase().includes('not registered') ||
         errMsg.toLowerCase().includes('contact admin') ||
-        err?.response?.status === 401
+        errMsg.toLowerCase().includes('does not exist') ||
+        err?.response?.status === 401 ||
+        err?.response?.status === 404
       ) {
         setIsUnregisteredPopupOpen(true);
       } else {
@@ -161,7 +163,16 @@ export const LoginPage: React.FC = () => {
       }
       setForgotStep(2);
     } catch (err: any) {
-      setForgotError(err.response?.data?.message || 'This email address does not exist in our system. Please check your registered email.');
+      const msg: string = err.response?.data?.message || err.message || '';
+      if (
+        err.response?.status === 404 ||
+        msg.toLowerCase().includes('does not exist') ||
+        msg.toLowerCase().includes('not registered')
+      ) {
+        setForgotError('Your email is not registered. Contact admin.');
+      } else {
+        setForgotError(msg || 'Failed to send verification code. Please try again.');
+      }
     } finally {
       setForgotLoading(false);
     }
