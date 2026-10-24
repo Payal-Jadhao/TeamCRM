@@ -17,12 +17,278 @@ import {
   UserCheck,
   X,
   AlertCircle,
-  Briefcase
+  Briefcase,
+  ChevronDown,
+  Check
 } from 'lucide-react';
 
 interface ProjectsPageProps {
   onNavigateTab: (tab: any, projectId?: number) => void;
 }
+
+interface MultiSelectUserDropdownProps {
+  label: string;
+  sublabel: string;
+  placeholder: string;
+  users: User[];
+  selectedIds: number[];
+  onChange: (newIds: number[]) => void;
+  icon: React.ReactNode;
+  accentColor: 'indigo' | 'emerald';
+  emptyMessage: string;
+}
+
+const MultiSelectUserDropdown: React.FC<MultiSelectUserDropdownProps> = ({
+  label,
+  sublabel,
+  placeholder,
+  users,
+  selectedIds,
+  onChange,
+  icon,
+  accentColor,
+  emptyMessage,
+}) => {
+  const [isOpen, setIsOpen] = useState(false);
+  const [search, setSearch] = useState('');
+  const dropdownRef = React.useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+        setIsOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  const filteredUsers = users.filter((u) => {
+    const q = search.toLowerCase();
+    return (
+      (u.fullName || '').toLowerCase().includes(q) ||
+      (u.email || '').toLowerCase().includes(q) ||
+      (u.teamTag || '').toLowerCase().includes(q)
+    );
+  });
+
+  const selectedUsers = users.filter((u) => selectedIds.includes(u.id));
+
+  const toggleUser = (id: number) => {
+    if (selectedIds.includes(id)) {
+      onChange(selectedIds.filter((item) => item !== id));
+    } else {
+      onChange([...selectedIds, id]);
+    }
+  };
+
+  const handleSelectAll = () => {
+    const allIds = Array.from(new Set([...selectedIds, ...filteredUsers.map((u) => u.id)]));
+    onChange(allIds);
+  };
+
+  const handleClearAll = () => {
+    const filteredIdSet = new Set(filteredUsers.map((u) => u.id));
+    onChange(selectedIds.filter((id) => !filteredIdSet.has(id)));
+  };
+
+  const isAllSelected = filteredUsers.length > 0 && filteredUsers.every((u) => selectedIds.includes(u.id));
+
+  const getInitials = (name: string) => {
+    return name
+      .split(' ')
+      .map((n) => n[0])
+      .filter(Boolean)
+      .slice(0, 2)
+      .join('')
+      .toUpperCase();
+  };
+
+  const isIndigo = accentColor === 'indigo';
+
+  return (
+    <div className="pt-2 border-t border-gray-100" ref={dropdownRef}>
+      <div className="flex items-center justify-between mb-1.5">
+        <label className="text-xs font-semibold text-text-primary flex items-center gap-1.5">
+          {icon}
+          <span>{label}</span>
+        </label>
+        <span className="text-[11px] text-text-secondary font-normal">{sublabel}</span>
+      </div>
+
+      {/* Trigger Button */}
+      <div className="relative">
+        <button
+          type="button"
+          onClick={() => setIsOpen(!isOpen)}
+          className={`w-full px-3.5 py-2.5 text-xs bg-purple-50/60 hover:bg-purple-50 text-text-primary rounded-xl border ${
+            isOpen ? 'border-primary ring-2 ring-primary/20' : 'border-border-custom hover:border-purple-300'
+          } flex items-center justify-between transition-all cursor-pointer`}
+        >
+          <div className="flex items-center gap-2 truncate">
+            {selectedIds.length === 0 ? (
+              <span className="text-gray-400">{placeholder}</span>
+            ) : (
+              <span className="font-semibold text-text-primary">
+                {selectedIds.length} {selectedIds.length === 1 ? 'member' : 'members'} selected
+              </span>
+            )}
+          </div>
+          <div className="flex items-center gap-1.5 ml-2 shrink-0">
+            {selectedIds.length > 0 && (
+              <span className={`px-2 py-0.5 text-[10px] font-bold rounded-full ${
+                isIndigo ? 'bg-indigo-100 text-indigo-700' : 'bg-emerald-100 text-emerald-700'
+              }`}>
+                {selectedIds.length}
+              </span>
+            )}
+            <ChevronDown className={`w-4 h-4 text-gray-500 transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`} />
+          </div>
+        </button>
+
+        {/* Selected Members Chips */}
+        {selectedUsers.length > 0 && (
+          <div className="flex flex-wrap gap-1.5 mt-2 max-h-24 overflow-y-auto">
+            {selectedUsers.map((u) => (
+              <span
+                key={u.id}
+                className={`inline-flex items-center gap-1.5 pl-1.5 pr-2 py-0.5 rounded-lg text-[11px] font-medium border ${
+                  isIndigo
+                    ? 'bg-indigo-50/90 text-indigo-900 border-indigo-200/80'
+                    : 'bg-emerald-50/90 text-emerald-900 border-emerald-200/80'
+                }`}
+              >
+                <span className={`w-4 h-4 rounded-full text-[9px] font-bold flex items-center justify-center text-white ${
+                  isIndigo ? 'bg-indigo-600' : 'bg-emerald-600'
+                }`}>
+                  {getInitials(u.fullName)}
+                </span>
+                <span className="truncate max-w-[120px]">{u.fullName}</span>
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    toggleUser(u.id);
+                  }}
+                  className="hover:text-red-500 text-gray-400 p-0.5 rounded transition-colors"
+                >
+                  <X className="w-3 h-3" />
+                </button>
+              </span>
+            ))}
+            {selectedUsers.length > 1 && (
+              <button
+                type="button"
+                onClick={() => onChange([])}
+                className="text-[10px] text-gray-400 hover:text-red-500 underline ml-1 self-center cursor-pointer"
+              >
+                Clear all
+              </button>
+            )}
+          </div>
+        )}
+
+        {/* Dropdown Popover */}
+        {isOpen && (
+          <div className="absolute left-0 right-0 z-50 mt-1 bg-white rounded-2xl shadow-xl border border-gray-200 p-2.5 space-y-2 animate-in fade-in zoom-in-95 duration-150">
+            {/* Search Input */}
+            <div className="relative">
+              <Search className="w-3.5 h-3.5 text-gray-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
+              <input
+                type="text"
+                autoFocus
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Search by name or email..."
+                className="w-full pl-8 pr-7 py-1.5 text-xs bg-gray-50 rounded-lg border border-gray-200 focus:border-primary focus:bg-white outline-none"
+              />
+              {search && (
+                <button
+                  type="button"
+                  onClick={() => setSearch('')}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                >
+                  <X className="w-3 h-3" />
+                </button>
+              )}
+            </div>
+
+            {/* Quick Actions */}
+            <div className="flex items-center justify-between px-1 text-[11px] text-gray-500 border-b border-gray-100 pb-1.5">
+              <span>{filteredUsers.length} available</span>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={isAllSelected ? handleClearAll : handleSelectAll}
+                  className="text-primary hover:underline font-semibold cursor-pointer"
+                >
+                  {isAllSelected ? 'Deselect All' : 'Select All'}
+                </button>
+              </div>
+            </div>
+
+            {/* User List */}
+            <div className="max-h-48 overflow-y-auto space-y-1 pr-1">
+              {filteredUsers.length === 0 ? (
+                <div className="py-4 text-center text-xs text-gray-400">
+                  {users.length === 0 ? emptyMessage : 'No members match your search.'}
+                </div>
+              ) : (
+                filteredUsers.map((u) => {
+                  const isChecked = selectedIds.includes(u.id);
+                  return (
+                    <div
+                      key={u.id}
+                      onClick={() => toggleUser(u.id)}
+                      className={`flex items-center justify-between p-2 rounded-xl text-xs cursor-pointer transition-colors ${
+                        isChecked
+                          ? isIndigo
+                            ? 'bg-indigo-50/80 text-indigo-950 font-medium'
+                            : 'bg-emerald-50/80 text-emerald-950 font-medium'
+                          : 'hover:bg-gray-50 text-text-primary'
+                      }`}
+                    >
+                      <div className="flex items-center gap-2.5 min-w-0">
+                        <div className={`w-7 h-7 rounded-full flex items-center justify-center text-[10px] font-bold text-white shrink-0 ${
+                          isIndigo ? 'bg-indigo-600' : 'bg-emerald-600'
+                        }`}>
+                          {getInitials(u.fullName)}
+                        </div>
+                        <div className="truncate">
+                          <p className="font-semibold truncate leading-tight">{u.fullName}</p>
+                          <p className="text-[10px] text-text-secondary truncate">{u.email}</p>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-2 shrink-0 ml-2">
+                        {u.teamTag && (
+                          <span className="text-[9px] px-1.5 py-0.5 rounded-md bg-gray-100 text-gray-600 font-mono">
+                            {u.teamTag}
+                          </span>
+                        )}
+                        <div
+                          className={`w-4 h-4 rounded-md border flex items-center justify-center transition-colors ${
+                            isChecked
+                              ? isIndigo
+                                ? 'bg-indigo-600 border-indigo-600 text-white'
+                                : 'bg-emerald-600 border-emerald-600 text-white'
+                              : 'border-gray-300 bg-white'
+                          }`}
+                        >
+                          {isChecked && <Check className="w-3 h-3 stroke-[3]" />}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
 
 export const ProjectsPage: React.FC<ProjectsPageProps> = ({ onNavigateTab }) => {
   const { user } = useAuth();
@@ -58,14 +324,29 @@ export const ProjectsPage: React.FC<ProjectsPageProps> = ({ onNavigateTab }) => 
   const loadData = async () => {
     setLoading(true);
     try {
-      const [projList, userList, taskList] = await Promise.all([
+      const [projRes, userRes, taskRes] = await Promise.allSettled([
         projectApi.getProjects(),
         userApi.getUsers(),
         taskApi.getTasks(),
       ]);
-      setProjects(projList);
-      setUsers(userList);
-      setTasks(taskList);
+
+      if (projRes.status === 'fulfilled') {
+        setProjects(projRes.value || []);
+      } else {
+        console.error('Failed to load projects', projRes.reason);
+      }
+
+      if (userRes.status === 'fulfilled') {
+        setUsers(userRes.value || []);
+      } else {
+        console.error('Failed to load users', userRes.reason);
+      }
+
+      if (taskRes.status === 'fulfilled') {
+        setTasks(taskRes.value || []);
+      } else {
+        console.error('Failed to load tasks', taskRes.reason);
+      }
     } catch (e) {
       console.error('Failed to load project data', e);
     } finally {
@@ -73,8 +354,9 @@ export const ProjectsPage: React.FC<ProjectsPageProps> = ({ onNavigateTab }) => 
     }
   };
 
-  const managers = users.filter((u) => u.roleName === 'ROLE_MANAGER' && u.isActive);
-  const employees = users.filter((u) => u.roleName === 'ROLE_EMPLOYEE' && u.isActive);
+  const getRole = (u: any) => (u.roleName || u.role?.name || u.role || '').toUpperCase();
+  const managers = users.filter((u) => getRole(u).includes('MANAGER'));
+  const employees = users.filter((u) => getRole(u).includes('EMPLOYEE') || (!getRole(u).includes('ADMIN') && !getRole(u).includes('MANAGER')));
 
   const openCreateModal = () => {
     setEditingProject(null);
@@ -82,8 +364,8 @@ export const ProjectsPage: React.FC<ProjectsPageProps> = ({ onNavigateTab }) => 
     setProjectKeyCode('');
     setProjectDesc('');
     setProjectStatus('ACTIVE');
-    setSelectedManagerIds(managers.map((m) => m.id));
-    setSelectedEmployeeIds(employees.map((e) => e.id));
+    setSelectedManagerIds([]);
+    setSelectedEmployeeIds([]);
     setFormError('');
     setIsModalOpen(true);
   };
@@ -535,67 +817,31 @@ export const ProjectsPage: React.FC<ProjectsPageProps> = ({ onNavigateTab }) => 
                 </select>
               </div>
 
-              {/* Assign Managers */}
-              <div className="pt-2 border-t border-gray-100">
-                <label className="block text-xs font-semibold text-text-primary mb-1.5 flex items-center justify-between">
-                  <span>Assign Project Managers:</span>
-                  <span className="text-[11px] text-text-secondary font-normal">Select managers to oversee this project</span>
-                </label>
-                <div className="space-y-1.5 max-h-32 overflow-y-auto p-2 bg-purple-50/50 rounded-xl border border-border-custom">
-                  {managers.map((m) => {
-                    const isChecked = selectedManagerIds.includes(m.id);
-                    return (
-                      <label key={m.id} className="flex items-center gap-2 text-xs text-text-primary cursor-pointer hover:bg-purple-100/50 p-1.5 rounded-lg transition-colors">
-                        <input
-                          type="checkbox"
-                          checked={isChecked}
-                          onChange={(e) => {
-                            if (e.target.checked) {
-                              setSelectedManagerIds((prev) => [...prev, m.id]);
-                            } else {
-                              setSelectedManagerIds((prev) => prev.filter((id) => id !== m.id));
-                            }
-                          }}
-                          className="rounded text-primary focus:ring-primary w-3.5 h-3.5"
-                        />
-                        <span className="font-semibold">{m.fullName}</span>
-                        <span className="text-[10px] text-text-secondary">({m.email})</span>
-                      </label>
-                    );
-                  })}
-                </div>
-              </div>
+              {/* Assign Managers Multiselect Dropdown */}
+              <MultiSelectUserDropdown
+                label="Assign Project Managers"
+                sublabel="Select managers to oversee this project"
+                placeholder="Choose managers (e.g. Jayshree Jadhao)..."
+                users={managers}
+                selectedIds={selectedManagerIds}
+                onChange={setSelectedManagerIds}
+                icon={<ShieldCheck className="w-4 h-4 text-primary" />}
+                accentColor="indigo"
+                emptyMessage="No managers found in database. Add managers in User Management."
+              />
 
-              {/* Assign Employees */}
-              <div className="pt-2 border-t border-gray-100">
-                <label className="block text-xs font-semibold text-text-primary mb-1.5 flex items-center justify-between">
-                  <span>Assign Team Employees:</span>
-                  <span className="text-[11px] text-text-secondary font-normal">Select contributors for this project</span>
-                </label>
-                <div className="space-y-1.5 max-h-32 overflow-y-auto p-2 bg-purple-50/50 rounded-xl border border-border-custom">
-                  {employees.map((emp) => {
-                    const isChecked = selectedEmployeeIds.includes(emp.id);
-                    return (
-                      <label key={emp.id} className="flex items-center gap-2 text-xs text-text-primary cursor-pointer hover:bg-purple-100/50 p-1.5 rounded-lg transition-colors">
-                        <input
-                          type="checkbox"
-                          checked={isChecked}
-                          onChange={(e) => {
-                            if (e.target.checked) {
-                              setSelectedEmployeeIds((prev) => [...prev, emp.id]);
-                            } else {
-                              setSelectedEmployeeIds((prev) => prev.filter((id) => id !== emp.id));
-                            }
-                          }}
-                          className="rounded text-primary focus:ring-primary w-3.5 h-3.5"
-                        />
-                        <span className="font-semibold">{emp.fullName}</span>
-                        <span className="text-[10px] text-text-secondary">({emp.email})</span>
-                      </label>
-                    );
-                  })}
-                </div>
-              </div>
+              {/* Assign Team Employees Multiselect Dropdown */}
+              <MultiSelectUserDropdown
+                label="Assign Team Employees"
+                sublabel="Select contributors for this project"
+                placeholder="Choose team employees (e.g. Rahaa Malhotra)..."
+                users={employees}
+                selectedIds={selectedEmployeeIds}
+                onChange={setSelectedEmployeeIds}
+                icon={<Users className="w-4 h-4 text-emerald-600" />}
+                accentColor="emerald"
+                emptyMessage="No employees found in database. Add employees in User Management."
+              />
 
               <div className="flex items-center justify-end gap-2 pt-4 border-t border-gray-100">
                 <button
@@ -640,65 +886,29 @@ export const ProjectsPage: React.FC<ProjectsPageProps> = ({ onNavigateTab }) => 
             </div>
 
             <div className="space-y-4 my-4">
-              <div>
-                <h4 className="text-xs font-bold text-text-primary mb-2 flex items-center gap-1.5">
-                  <ShieldCheck className="w-4 h-4 text-blue-600" />
-                  <span>Assigned Managers:</span>
-                </h4>
-                <div className="space-y-1.5 p-2.5 bg-blue-50/50 rounded-xl border border-blue-200/60 max-h-36 overflow-y-auto">
-                  {managers.map((m) => {
-                    const isChecked = selectedManagerIds.includes(m.id);
-                    return (
-                      <label key={m.id} className="flex items-center gap-2 text-xs text-text-primary cursor-pointer p-1 hover:bg-white rounded-lg transition-colors">
-                        <input
-                          type="checkbox"
-                          checked={isChecked}
-                          onChange={(e) => {
-                            if (e.target.checked) {
-                              setSelectedManagerIds((prev) => [...prev, m.id]);
-                            } else {
-                              setSelectedManagerIds((prev) => prev.filter((id) => id !== m.id));
-                            }
-                          }}
-                          className="rounded text-primary focus:ring-primary w-3.5 h-3.5"
-                        />
-                        <span className="font-semibold text-gray-800">{m.fullName}</span>
-                        <span className="text-[10px] text-gray-500">({m.teamTag || 'Management'})</span>
-                      </label>
-                    );
-                  })}
-                </div>
-              </div>
+              <MultiSelectUserDropdown
+                label="Assigned Project Managers"
+                sublabel="Overseeing this project"
+                placeholder="Choose managers (e.g. Jayshree Jadhao)..."
+                users={managers}
+                selectedIds={selectedManagerIds}
+                onChange={setSelectedManagerIds}
+                icon={<ShieldCheck className="w-4 h-4 text-primary" />}
+                accentColor="indigo"
+                emptyMessage="No managers found in database."
+              />
 
-              <div>
-                <h4 className="text-xs font-bold text-text-primary mb-2 flex items-center gap-1.5">
-                  <Users className="w-4 h-4 text-emerald-600" />
-                  <span>Assigned Employees:</span>
-                </h4>
-                <div className="space-y-1.5 p-2.5 bg-emerald-50/50 rounded-xl border border-emerald-200/60 max-h-36 overflow-y-auto">
-                  {employees.map((emp) => {
-                    const isChecked = selectedEmployeeIds.includes(emp.id);
-                    return (
-                      <label key={emp.id} className="flex items-center gap-2 text-xs text-text-primary cursor-pointer p-1 hover:bg-white rounded-lg transition-colors">
-                        <input
-                          type="checkbox"
-                          checked={isChecked}
-                          onChange={(e) => {
-                            if (e.target.checked) {
-                              setSelectedEmployeeIds((prev) => [...prev, emp.id]);
-                            } else {
-                              setSelectedEmployeeIds((prev) => prev.filter((id) => id !== emp.id));
-                            }
-                          }}
-                          className="rounded text-primary focus:ring-primary w-3.5 h-3.5"
-                        />
-                        <span className="font-semibold text-gray-800">{emp.fullName}</span>
-                        <span className="text-[10px] text-gray-500">({emp.teamTag || 'Frontend'})</span>
-                      </label>
-                    );
-                  })}
-                </div>
-              </div>
+              <MultiSelectUserDropdown
+                label="Assigned Team Employees"
+                sublabel="Contributors on this project"
+                placeholder="Choose team employees (e.g. Rahaa Malhotra)..."
+                users={employees}
+                selectedIds={selectedEmployeeIds}
+                onChange={setSelectedEmployeeIds}
+                icon={<Users className="w-4 h-4 text-emerald-600" />}
+                accentColor="emerald"
+                emptyMessage="No employees found in database."
+              />
             </div>
 
             <div className="flex items-center justify-end gap-2 pt-3 border-t border-gray-100">

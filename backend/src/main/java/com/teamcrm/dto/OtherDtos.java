@@ -255,4 +255,19 @@ public class OtherDtos {
             String result,
             List<String> items
     ) {}
+
+    // Project
+    public record ProjectResponseDto(
+            Long id,
+            String name,
+            String keyCode,
+            String description,
+            String status,
+            Long ownerId,
+            String ownerName,
+            List<Long> managerIds,
+            List<Long> employeeIds,
+            Instant createdAt,
+            Instant updatedAt
+    ) {}
 }

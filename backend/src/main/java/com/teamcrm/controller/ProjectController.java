@@ -1,17 +1,16 @@
 package com.teamcrm.controller;
 
+import com.teamcrm.dto.OtherDtos.ProjectResponseDto;
 import com.teamcrm.entity.Project;
 import com.teamcrm.entity.User;
 import com.teamcrm.repository.ProjectRepository;
 import com.teamcrm.repository.UserRepository;
 import org.springframework.http.ResponseEntity;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.Instant;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
+import java.util.*;
 
 @RestController
 @RequestMapping("/api/v1/projects")
@@ -26,19 +25,24 @@ public class ProjectController {
     }
 
     @GetMapping
-    public ResponseEntity<List<Project>> getAllProjects() {
-        return ResponseEntity.ok(projectRepository.findByIsDeletedFalse());
+    @Transactional(readOnly = true)
+    public ResponseEntity<List<ProjectResponseDto>> getAllProjects() {
+        List<Project> list = projectRepository.findAllActiveWithMembers();
+        List<ProjectResponseDto> dtos = list.stream().map(this::toDto).toList();
+        return ResponseEntity.ok(dtos);
     }
 
     @GetMapping("/{id}")
-    public ResponseEntity<Project> getProjectById(@PathVariable Long id) {
-        return projectRepository.findById(id)
-                .map(ResponseEntity::ok)
+    @Transactional(readOnly = true)
+    public ResponseEntity<ProjectResponseDto> getProjectById(@PathVariable Long id) {
+        return projectRepository.findByIdWithMembers(id)
+                .map(p -> ResponseEntity.ok(toDto(p)))
                 .orElse(ResponseEntity.notFound().build());
     }
 
     @PostMapping
-    public ResponseEntity<Project> createProject(@RequestBody Map<String, Object> payload) {
+    @Transactional
+    public ResponseEntity<ProjectResponseDto> createProject(@RequestBody Map<String, Object> payload) {
         Project project = new Project();
         project.setName((String) payload.getOrDefault("name", "New Project"));
         project.setKeyCode(((String) payload.getOrDefault("keyCode", "PRJ")).toUpperCase().trim());
@@ -49,62 +53,100 @@ public class ProjectController {
         project.setIsDeleted(false);
 
         Set<User> members = new HashSet<>();
-        if (payload.containsKey("managerIds")) {
-            List<Number> mgrs = (List<Number>) payload.get("managerIds");
-            for (Number mId : mgrs) {
-                userRepository.findById(mId.longValue()).ifPresent(members::add);
+        if (payload.containsKey("managerIds") && payload.get("managerIds") instanceof List<?> mgrs) {
+            for (Object mId : mgrs) {
+                if (mId instanceof Number n) {
+                    userRepository.findById(n.longValue()).ifPresent(members::add);
+                }
             }
         }
-        if (payload.containsKey("employeeIds")) {
-            List<Number> emps = (List<Number>) payload.get("employeeIds");
-            for (Number eId : emps) {
-                userRepository.findById(eId.longValue()).ifPresent(members::add);
+        if (payload.containsKey("employeeIds") && payload.get("employeeIds") instanceof List<?> emps) {
+            for (Object eId : emps) {
+                if (eId instanceof Number n) {
+                    userRepository.findById(n.longValue()).ifPresent(members::add);
+                }
             }
         }
         project.setMembers(members);
 
         Project saved = projectRepository.save(project);
-        return ResponseEntity.ok(saved);
+        return ResponseEntity.ok(toDto(saved));
     }
 
     @PutMapping("/{id}")
-    public ResponseEntity<Project> updateProject(@PathVariable Long id, @RequestBody Map<String, Object> payload) {
-        return projectRepository.findById(id).map(project -> {
+    @Transactional
+    public ResponseEntity<ProjectResponseDto> updateProject(@PathVariable Long id, @RequestBody Map<String, Object> payload) {
+        return projectRepository.findByIdWithMembers(id).map(project -> {
             if (payload.containsKey("name")) project.setName((String) payload.get("name"));
             if (payload.containsKey("keyCode")) project.setKeyCode(((String) payload.get("keyCode")).toUpperCase().trim());
             if (payload.containsKey("description")) project.setDescription((String) payload.get("description"));
             if (payload.containsKey("status")) project.setStatus((String) payload.get("status"));
             project.setUpdatedAt(Instant.now());
 
-            Set<User> members = new HashSet<>(project.getMembers());
             if (payload.containsKey("managerIds") || payload.containsKey("employeeIds")) {
-                members.clear();
-                if (payload.containsKey("managerIds")) {
-                    List<Number> mgrs = (List<Number>) payload.get("managerIds");
-                    for (Number mId : mgrs) {
-                        userRepository.findById(mId.longValue()).ifPresent(members::add);
+                Set<User> members = new HashSet<>();
+                if (payload.containsKey("managerIds") && payload.get("managerIds") instanceof List<?> mgrs) {
+                    for (Object mId : mgrs) {
+                        if (mId instanceof Number n) {
+                            userRepository.findById(n.longValue()).ifPresent(members::add);
+                        }
                     }
                 }
-                if (payload.containsKey("employeeIds")) {
-                    List<Number> emps = (List<Number>) payload.get("employeeIds");
-                    for (Number eId : emps) {
-                        userRepository.findById(eId.longValue()).ifPresent(members::add);
+                if (payload.containsKey("employeeIds") && payload.get("employeeIds") instanceof List<?> emps) {
+                    for (Object eId : emps) {
+                        if (eId instanceof Number n) {
+                            userRepository.findById(n.longValue()).ifPresent(members::add);
+                        }
                     }
                 }
                 project.setMembers(members);
             }
 
             Project saved = projectRepository.save(project);
-            return ResponseEntity.ok(saved);
+            return ResponseEntity.ok(toDto(saved));
         }).orElse(ResponseEntity.notFound().build());
     }
 
     @DeleteMapping("/{id}")
+    @Transactional
     public ResponseEntity<Void> deleteProject(@PathVariable Long id) {
         return projectRepository.findById(id).map(project -> {
             project.setIsDeleted(true);
             projectRepository.save(project);
             return ResponseEntity.ok().<Void>build();
         }).orElse(ResponseEntity.notFound().build());
+    }
+
+    private ProjectResponseDto toDto(Project project) {
+        Long ownerId = project.getOwner() != null ? project.getOwner().getId() : null;
+        String ownerName = project.getOwner() != null ? project.getOwner().getFullName() : null;
+
+        List<Long> managerIds = new ArrayList<>();
+        List<Long> employeeIds = new ArrayList<>();
+
+        if (project.getMembers() != null) {
+            for (User u : project.getMembers()) {
+                String role = u.getRole() != null ? u.getRole().getName() : "";
+                if (role.contains("MANAGER")) {
+                    managerIds.add(u.getId());
+                } else {
+                    employeeIds.add(u.getId());
+                }
+            }
+        }
+
+        return new ProjectResponseDto(
+                project.getId(),
+                project.getName(),
+                project.getKeyCode(),
+                project.getDescription(),
+                project.getStatus(),
+                ownerId,
+                ownerName,
+                managerIds,
+                employeeIds,
+                project.getCreatedAt(),
+                project.getUpdatedAt()
+        );
     }
 }
