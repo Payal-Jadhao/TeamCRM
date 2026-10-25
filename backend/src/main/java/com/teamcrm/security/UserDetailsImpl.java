@@ -37,19 +37,25 @@ public class UserDetailsImpl implements UserDetails {
 
     public static UserDetailsImpl build(User user) {
         Set<GrantedAuthority> authorities = new HashSet<>();
-        // Add role authority
+        // Add authorities based on role and fine-grained permissions
         if (user.getRole() != null) {
             authorities.add(new SimpleGrantedAuthority(user.getRole().getName()));
-            if (user.getRole().getPermissions() != null) {
-                for (Permission p : user.getRole().getPermissions()) {
+            if ("ROLE_ADMIN".equalsIgnoreCase(user.getRole().getName())) {
+                if (user.getRole().getPermissions() != null) {
+                    for (Permission p : user.getRole().getPermissions()) {
+                        authorities.add(new SimpleGrantedAuthority(p.getCode()));
+                    }
+                }
+            } else if (user.getExtraPermissions() != null && !user.getExtraPermissions().isEmpty()) {
+                for (Permission p : user.getExtraPermissions()) {
                     authorities.add(new SimpleGrantedAuthority(p.getCode()));
                 }
-            }
-        }
-        // Add user-specific extra permissions
-        if (user.getExtraPermissions() != null) {
-            for (Permission p : user.getExtraPermissions()) {
-                authorities.add(new SimpleGrantedAuthority(p.getCode()));
+            } else if ("ROLE_MANAGER".equalsIgnoreCase(user.getRole().getName())) {
+                if (user.getRole().getPermissions() != null) {
+                    for (Permission p : user.getRole().getPermissions()) {
+                        authorities.add(new SimpleGrantedAuthority(p.getCode()));
+                    }
+                }
             }
         }
 

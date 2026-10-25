@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { Topbar } from './components/layout/Topbar';
 import { Sidebar, type NavTab } from './components/layout/Sidebar';
@@ -21,6 +21,12 @@ const MainLayout: React.FC = () => {
   const [activeTab, setActiveTab] = useState<NavTab>('dashboard');
   const [searchTerm, setSearchTerm] = useState('');
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+
+  // Always reset to dashboard when logging in or switching accounts
+  useEffect(() => {
+    setActiveTab('dashboard');
+  }, [user?.id]);
+
 
   // Selected task to open in drawer
   const [selectedTaskId, setSelectedTaskId] = useState<number | null>(null);
@@ -103,7 +109,7 @@ const MainLayout: React.FC = () => {
             />
           )}
 
-          {activeTab === 'crm' && <CrmPage searchTerm={searchTerm} />}
+          {activeTab === 'crm' && user?.roleName === 'ROLE_ADMIN' && <CrmPage searchTerm={searchTerm} />}
 
           {activeTab === 'api-handoff' && <ApiHandoffPage />}
 

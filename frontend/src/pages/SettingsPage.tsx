@@ -15,7 +15,9 @@ import {
   Briefcase,
   Users2,
   RefreshCw,
+  Trash2,
 } from 'lucide-react';
+import { TableLoader, ButtonSpinner } from '../components/ui/LoadingSpinner';
 
 type MasterCategory = 'TEAM' | 'TASK_TYPE' | 'LEAD_STATUS' | 'DEAL_STAGE';
 
@@ -39,6 +41,7 @@ export const SettingsPage: React.FC = () => {
   const [formKeyCode, setFormKeyCode] = useState('');
   const [formSortOrder, setFormSortOrder] = useState<number>(1);
   const [toastMsg, setToastMsg] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const showToast = (msg: string) => {
     setToastMsg(msg);
@@ -81,6 +84,7 @@ export const SettingsPage: React.FC = () => {
     e.preventDefault();
     if (!formName.trim()) return;
 
+    setIsSubmitting(true);
     try {
       if (editingItem) {
         const updated = await masterApi.updateMaster(editingItem.id, {
@@ -104,6 +108,8 @@ export const SettingsPage: React.FC = () => {
       setIsModalOpen(false);
     } catch (err: any) {
       alert(err.response?.data?.message || 'Failed to save master record');
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -114,6 +120,17 @@ export const SettingsPage: React.FC = () => {
       showToast(`Set "${updated.name}" to ${updated.isActive ? 'Active' : 'Inactive'}`);
     } catch (err: any) {
       alert(err.response?.data?.message || 'Failed to toggle status');
+    }
+  };
+
+  const handleDelete = async (item: MasterItem) => {
+    if (!window.confirm(`Are you sure you want to delete master value "${item.name}"?`)) return;
+    try {
+      await masterApi.deleteMaster(item.id);
+      setItems((prev) => prev.filter((it) => it.id !== item.id));
+      showToast(`Deleted "${item.name}" successfully!`);
+    } catch (err: any) {
+      alert(err.response?.data?.message || 'Failed to delete master item');
     }
   };
 
@@ -196,11 +213,7 @@ export const SettingsPage: React.FC = () => {
             </thead>
             <tbody className="divide-y divide-border-custom">
               {loading ? (
-                <tr>
-                  <td colSpan={6} className="px-5 py-12 text-center text-text-secondary">
-                    Loading master records...
-                  </td>
-                </tr>
+                <TableLoader colSpan={6} message="Loading master records from database..." />
               ) : items.length === 0 ? (
                 <tr>
                   <td colSpan={6} className="px-5 py-12 text-center text-text-secondary">
@@ -227,7 +240,7 @@ export const SettingsPage: React.FC = () => {
                         </span>
                       )}
                     </td>
-                    <td className="px-5 py-4 text-right space-x-2 whitespace-nowrap">
+                    <td className="px-5 py-4 text-right space-x-1.5 whitespace-nowrap">
                       <button
                         onClick={() => openEditModal(item)}
                         className="px-2.5 py-1 bg-purple-50 hover:bg-purple-100 text-primary font-bold rounded-lg border border-purple-200 transition-colors cursor-pointer"
@@ -244,6 +257,13 @@ export const SettingsPage: React.FC = () => {
                         }`}
                       >
                         {item.isActive ? 'Deactivate' : 'Activate'}
+                      </button>
+                      <button
+                        onClick={() => handleDelete(item)}
+                        className="px-2.5 py-1 bg-rose-50 hover:bg-rose-100 text-rose-600 font-bold rounded-lg border border-rose-200 transition-colors cursor-pointer"
+                        title="Delete Master Item"
+                      >
+                        <Trash2 className="w-3.5 h-3.5 inline" />
                       </button>
                     </td>
                   </tr>
@@ -298,9 +318,16 @@ export const SettingsPage: React.FC = () => {
 
           <button
             type="submit"
-            className="w-full py-2.5 bg-primary text-white font-bold rounded-xl shadow-xs cursor-pointer"
+            disabled={isSubmitting}
+            className="w-full py-2.5 bg-primary text-white font-bold rounded-xl shadow-xs cursor-pointer disabled:opacity-60 flex items-center justify-center gap-2"
           >
-            {editingItem ? 'Save Changes' : 'Create Master Record'}
+            {isSubmitting ? (
+              <ButtonSpinner text="Saving Master..." />
+            ) : editingItem ? (
+              'Save Changes'
+            ) : (
+              'Create Master Record'
+            )}
           </button>
         </form>
       </Modal>

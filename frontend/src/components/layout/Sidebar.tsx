@@ -61,7 +61,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
         requiresAdminOrManager: true,
       },
       { id: 'tasks', label: 'Tasks', icon: CheckSquare },
-      { id: 'crm', label: 'Clients & Deals', icon: Briefcase },
+      { id: 'crm', label: 'Clients & Deals', icon: Briefcase, requiresAdminOnly: true },
       { id: 'api-handoff', label: 'API Specs', icon: FileCode },
       { id: 'meetings', label: 'Meetings', icon: Calendar },
       { id: 'reports', label: 'Work Hours & Reports', icon: BarChart3, permission: 'REPORT_VIEW' },

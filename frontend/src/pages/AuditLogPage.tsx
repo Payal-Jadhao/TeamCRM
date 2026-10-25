@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { auditApi } from '../services/api';
 import type { AuditLogItem } from '../types';
 import { History, Shield, Filter, Search } from 'lucide-react';
+import { TableLoader } from '../components/ui/LoadingSpinner';
 
 export const AuditLogPage: React.FC = () => {
   const [logs, setLogs] = useState<AuditLogItem[]>([]);
@@ -84,34 +85,44 @@ export const AuditLogPage: React.FC = () => {
               </tr>
             </thead>
             <tbody className="divide-y divide-border-custom">
-              {filtered.map((log) => (
-                <tr key={log.id} className="hover:bg-purple-50/40 transition-colors">
-                  <td className="px-6 py-4 font-mono text-text-secondary whitespace-nowrap">
-                    {new Date(log.createdAt).toLocaleString()}
-                  </td>
-                  <td className="px-6 py-4 font-bold text-text-primary">
-                    {log.actorEmail || 'System Automated'}
-                  </td>
-                  <td className="px-6 py-4">
-                    <span className="px-2 py-0.5 rounded font-mono font-bold text-[10px] bg-purple-100 text-primary">
-                      {log.action}
-                    </span>
-                  </td>
-                  <td className="px-6 py-4 font-semibold text-text-secondary">
-                    {log.entityName} #{log.entityId || ''}
-                  </td>
-                  <td className="px-6 py-4 text-text-primary font-medium">
-                    {log.oldValue && (
-                      <span className="line-through text-rose-500 mr-2">{log.oldValue}</span>
-                    )}
-                    {log.newValue ? (
-                      <span className="text-emerald-700 font-semibold">{log.newValue}</span>
-                    ) : (
-                      'Recorded change'
-                    )}
+              {loading ? (
+                <TableLoader colSpan={5} message="Loading audit logs..." />
+              ) : filtered.length === 0 ? (
+                <tr>
+                  <td colSpan={5} className="px-6 py-8 text-center text-text-secondary text-xs">
+                    No audit records found matching criteria.
                   </td>
                 </tr>
-              ))}
+              ) : (
+                filtered.map((log) => (
+                  <tr key={log.id} className="hover:bg-purple-50/40 transition-colors">
+                    <td className="px-6 py-4 font-mono text-text-secondary whitespace-nowrap">
+                      {new Date(log.createdAt).toLocaleString()}
+                    </td>
+                    <td className="px-6 py-4 font-bold text-text-primary">
+                      {log.actorEmail || 'System Automated'}
+                    </td>
+                    <td className="px-6 py-4">
+                      <span className="px-2 py-0.5 rounded font-mono font-bold text-[10px] bg-purple-100 text-primary">
+                        {log.action}
+                      </span>
+                    </td>
+                    <td className="px-6 py-4 font-semibold text-text-secondary">
+                      {log.entityName} #{log.entityId || ''}
+                    </td>
+                    <td className="px-6 py-4 text-text-primary font-medium">
+                      {log.oldValue && (
+                        <span className="line-through text-rose-500 mr-2">{log.oldValue}</span>
+                      )}
+                      {log.newValue ? (
+                        <span className="text-emerald-700 font-semibold">{log.newValue}</span>
+                      ) : (
+                        'Recorded change'
+                      )}
+                    </td>
+                  </tr>
+                ))
+              )}
             </tbody>
           </table>
         </div>

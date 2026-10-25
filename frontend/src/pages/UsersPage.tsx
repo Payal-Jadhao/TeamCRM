@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
-import { userApi } from '../services/api';
-import type { User } from '../types';
+import { userApi, masterApi } from '../services/api';
+import type { User, MasterItem } from '../types';
 import { TeamTagChip } from '../components/ui/Badge';
 import { Modal } from '../components/ui/Modal';
 import {
@@ -23,9 +23,10 @@ import {
   Copy,
   Check,
 } from 'lucide-react';
+import { TableLoader, ButtonSpinner } from '../components/ui/LoadingSpinner';
 
 export const UsersPage: React.FC = () => {
-  const { user: currentUser } = useAuth();
+  const { user: currentUser, refreshProfile } = useAuth();
   const [users, setUsers] = useState<User[]>([]);
   const [permissions, setPermissions] = useState<{ id: number; code: string; module: string; description: string }[]>([]);
   const [loading, setLoading] = useState(true);
@@ -65,10 +66,8 @@ export const UsersPage: React.FC = () => {
   const [editPhone, setEditPhone] = useState('');
   const [editIsActive, setEditIsActive] = useState(true);
 
-  // Reset Password Modal
-  const [isResetModalOpen, setIsResetModalOpen] = useState(false);
-  const [userForReset, setUserForReset] = useState<User | null>(null);
-  const [resetPasswordInput, setResetPasswordInput] = useState('Welcome123!');
+  // Action Submitting Loader
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   // Deactivate / Soft Delete Modal
   const [userToDelete, setUserToDelete] = useState<User | null>(null);
@@ -83,6 +82,7 @@ export const UsersPage: React.FC = () => {
   // Permission Matrix Modal
   const [selectedUser, setSelectedUser] = useState<User | null>(null);
   const [selectedPerms, setSelectedPerms] = useState<string[]>([]);
+  const [teamMasters, setTeamMasters] = useState<MasterItem[]>([]);
 
   useEffect(() => {
     loadData();
@@ -91,12 +91,16 @@ export const UsersPage: React.FC = () => {
   const loadData = async () => {
     setLoading(true);
     try {
-      const [u, perms] = await Promise.all([
+      const [u, perms, masters] = await Promise.all([
         userApi.getUsers(),
         userApi.getAllPermissions(),
+        masterApi.getMasters('TEAM').catch(() => []),
       ]);
       setUsers(u);
       setPermissions(perms);
+      if (masters && masters.length > 0) {
+        setTeamMasters(masters.filter((m) => m.isActive !== false));
+      }
     } catch (e) {
       console.error(e);
     } finally {
@@ -104,8 +108,21 @@ export const UsersPage: React.FC = () => {
     }
   };
 
+  const availableTeams = teamMasters.length > 0
+    ? teamMasters.map((m) => ({ code: m.keyCode || m.name.toUpperCase(), name: m.name }))
+    : [
+        { code: 'FRONTEND', name: 'Frontend Engineering' },
+        { code: 'BACKEND', name: 'Backend Engineering' },
+        { code: 'QA', name: 'Quality Assurance' },
+        { code: 'SALES', name: 'Sales & Revenue' },
+        { code: 'DESIGN', name: 'Product Design' },
+        { code: 'MANAGEMENT', name: 'Management' },
+      ];
+
+
   const handleCreateUser = async (e: React.FormEvent) => {
     e.preventDefault();
+    setIsSubmitting(true);
     try {
       const created = await userApi.createUser({
         email: newEmail.trim().toLowerCase(),
@@ -122,6 +139,8 @@ export const UsersPage: React.FC = () => {
       showToast(`Created account for ${created.fullName}!`);
     } catch (err: any) {
       alert(err.response?.data?.message || 'Failed to create user');
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -140,6 +159,7 @@ export const UsersPage: React.FC = () => {
   const handleUpdateUser = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!editUserId) return;
+    setIsSubmitting(true);
     try {
       const payload: any = {
         fullName: editFullName.trim(),
@@ -168,32 +188,8 @@ export const UsersPage: React.FC = () => {
       showToast(`User ${updated.fullName} updated successfully!`);
     } catch (err: any) {
       alert(err.response?.data?.message || 'Failed to update user');
-    }
-  };
-
-  const openResetModal = (u: User) => {
-    setUserForReset(u);
-    setResetPasswordInput('Welcome123!');
-    setIsResetModalOpen(true);
-  };
-
-  const handleResetPasswordSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!userForReset) return;
-    const pwd = resetPasswordInput.trim();
-    try {
-      const res: any = await userApi.resetPassword(userForReset.id, pwd);
-      setUsers((prev) =>
-        prev.map((u) =>
-          u.id === userForReset.id
-            ? { ...u, ...(res || {}), initialPassword: pwd }
-            : u
-        )
-      );
-      setIsResetModalOpen(false);
-      showToast(`Password successfully reset for ${userForReset.fullName}`);
-    } catch (err: any) {
-      alert(err.response?.data?.message || 'Failed to reset password');
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -228,15 +224,22 @@ export const UsersPage: React.FC = () => {
 
   const handleSavePermissions = async () => {
     if (!selectedUser) return;
+    setIsSubmitting(true);
     try {
       await userApi.updatePermissions(selectedUser.id, selectedPerms);
       setUsers((prev) =>
         prev.map((u) => (u.id === selectedUser.id ? { ...u, permissions: selectedPerms } : u))
       );
+      if (selectedUser.id === currentUser?.id) {
+        refreshProfile();
+      }
       setSelectedUser(null);
       showToast('Permissions updated and logged to audit trail!');
     } catch (e) {
       console.error(e);
+      alert('Failed to update permissions');
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -305,7 +308,16 @@ export const UsersPage: React.FC = () => {
               </tr>
             </thead>
             <tbody className="divide-y divide-border-custom">
-              {users.map((u) => {
+              {loading ? (
+                <TableLoader colSpan={7} message="Loading employee accounts & permissions matrix..." />
+              ) : users.length === 0 ? (
+                <tr>
+                  <td colSpan={7} className="px-5 py-12 text-center text-text-secondary">
+                    No employee accounts found.
+                  </td>
+                </tr>
+              ) : (
+                users.map((u) => {
                 const isTargetAdmin = u.roleName === 'ROLE_ADMIN';
                 const canSeePassword =
                   currentUser?.roleName === 'ROLE_ADMIN' ||
@@ -381,16 +393,9 @@ export const UsersPage: React.FC = () => {
                     {currentUser?.roleName === 'ROLE_ADMIN' ? (
                       <>
                         <button
-                          onClick={() => openResetModal(u)}
-                          className="px-2.5 py-1 bg-amber-50 hover:bg-amber-100 text-amber-800 font-bold rounded-lg border border-amber-200 transition-colors cursor-pointer text-xs"
-                          title="Reset Password"
-                        >
-                          <Key className="w-3.5 h-3.5 inline mr-1" /> Reset Password
-                        </button>
-                        <button
                           onClick={() => openEditUser(u)}
                           className="px-2 py-1 bg-purple-50 hover:bg-purple-100 text-primary font-bold rounded-lg border border-purple-200 transition-colors cursor-pointer"
-                          title="Edit User Info"
+                          title="Edit User Info & Password"
                         >
                           <Edit3 className="w-3.5 h-3.5 inline mr-1" /> Edit
                         </button>
@@ -429,7 +434,7 @@ export const UsersPage: React.FC = () => {
                   </td>
                 </tr>
               );
-            })}
+            }))}
             </tbody>
           </table>
         </div>
@@ -486,11 +491,11 @@ export const UsersPage: React.FC = () => {
                 onChange={(e) => setNewTeamTag(e.target.value)}
                 className="w-full px-3 py-2 bg-purple-50 rounded-lg border border-border-custom outline-none font-bold"
               >
-                <option value="FRONTEND">FRONTEND</option>
-                <option value="BACKEND">BACKEND</option>
-                <option value="QA">QA</option>
-                <option value="SALES">SALES</option>
-                <option value="DESIGN">DESIGN</option>
+                {availableTeams.map((t) => (
+                  <option key={t.code} value={t.code}>
+                    {t.name} ({t.code})
+                  </option>
+                ))}
               </select>
             </div>
           </div>
@@ -511,43 +516,15 @@ export const UsersPage: React.FC = () => {
 
           <button
             type="submit"
-            className="w-full py-2.5 bg-primary text-white font-bold rounded-xl shadow-xs cursor-pointer"
+            disabled={isSubmitting}
+            className="w-full py-2.5 bg-primary text-white font-bold rounded-xl shadow-xs cursor-pointer disabled:opacity-60 flex items-center justify-center gap-2"
           >
-            Provision Employee
+            {isSubmitting ? <ButtonSpinner text="Provisioning..." /> : 'Provision Employee'}
           </button>
         </form>
       </Modal>
 
-      {/* RESET PASSWORD MODAL */}
-      <Modal
-        isOpen={isResetModalOpen}
-        onClose={() => setIsResetModalOpen(false)}
-        title={`Reset Password: ${userForReset?.fullName || ''}`}
-      >
-        <form onSubmit={handleResetPasswordSubmit} className="space-y-4 text-xs">
-          <div className="p-3 bg-amber-50 rounded-xl border border-amber-200 text-amber-900">
-            <span className="font-bold">Security Notice:</span> The user's password will be encrypted using BCrypt in the database. The user will be required to update it on their next login.
-          </div>
 
-          <div>
-            <label className="block font-semibold mb-1">New Temporary Password</label>
-            <input
-              type="text"
-              required
-              value={resetPasswordInput}
-              onChange={(e) => setResetPasswordInput(e.target.value)}
-              className="w-full px-3 py-2 bg-purple-50 rounded-lg border border-border-custom outline-none font-mono font-bold"
-            />
-          </div>
-
-          <button
-            type="submit"
-            className="w-full py-2.5 bg-primary text-white font-bold rounded-xl shadow-xs cursor-pointer"
-          >
-            Confirm Password Reset
-          </button>
-        </form>
-      </Modal>
 
       {/* FINE-GRAINED PERMISSION MATRIX MODAL */}
       {selectedUser && (
@@ -602,10 +579,11 @@ export const UsersPage: React.FC = () => {
 
             <button
               type="button"
+              disabled={isSubmitting}
               onClick={handleSavePermissions}
-              className="w-full py-2.5 bg-primary text-white font-bold rounded-xl shadow-xs cursor-pointer"
+              className="w-full py-2.5 bg-primary text-white font-bold rounded-xl shadow-xs cursor-pointer disabled:opacity-60 flex items-center justify-center gap-2"
             >
-              Save Permissions Matrix
+              {isSubmitting ? <ButtonSpinner text="Saving Permissions..." /> : 'Save Permissions Matrix'}
             </button>
           </div>
         </Modal>
@@ -678,12 +656,11 @@ export const UsersPage: React.FC = () => {
                 onChange={(e) => setEditTeamTag(e.target.value)}
                 className="w-full px-3 py-2 bg-purple-50 rounded-lg border border-border-custom outline-none font-bold"
               >
-                <option value="FRONTEND">FRONTEND</option>
-                <option value="BACKEND">BACKEND</option>
-                <option value="QA">QA</option>
-                <option value="SALES">SALES</option>
-                <option value="DESIGN">DESIGN</option>
-                <option value="DEVOPS">DEVOPS</option>
+                {availableTeams.map((t) => (
+                  <option key={t.code} value={t.code}>
+                    {t.name} ({t.code})
+                  </option>
+                ))}
               </select>
             </div>
           </div>
@@ -715,9 +692,10 @@ export const UsersPage: React.FC = () => {
 
           <button
             type="submit"
-            className="w-full py-2.5 bg-primary text-white font-bold rounded-xl shadow-xs cursor-pointer"
+            disabled={isSubmitting}
+            className="w-full py-2.5 bg-primary text-white font-bold rounded-xl shadow-xs cursor-pointer disabled:opacity-60 flex items-center justify-center gap-2"
           >
-            Save User Changes
+            {isSubmitting ? <ButtonSpinner text="Saving Changes..." /> : 'Save User Changes'}
           </button>
         </form>
       </Modal>

@@ -38,6 +38,7 @@ public class TaskController {
     }
 
     @PostMapping
+    @PreAuthorize("hasAuthority('TASK_CREATE') or hasRole('ADMIN')")
     public ResponseEntity<TaskResponseDto> createTask(
             @AuthenticationPrincipal UserDetailsImpl currentUser,
             @Valid @RequestBody CreateTaskRequest request) {

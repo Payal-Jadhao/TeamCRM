@@ -21,8 +21,14 @@ public class ApiHandoffController {
     }
 
     @GetMapping
-    public ResponseEntity<List<ApiDocResponseDto>> getAllApiDocs() {
-        return ResponseEntity.ok(apiHandoffService.getAllApiDocs());
+    public ResponseEntity<List<ApiDocResponseDto>> getAllApiDocs(
+            @AuthenticationPrincipal UserDetailsImpl currentUser) {
+        if (currentUser == null) {
+            return ResponseEntity.ok(List.of());
+        }
+        boolean isAdmin = currentUser.getAuthorities().stream()
+                .anyMatch(a -> a.getAuthority().equals("ROLE_ADMIN"));
+        return ResponseEntity.ok(apiHandoffService.getAllApiDocs(currentUser.getId(), isAdmin));
     }
 
     @GetMapping("/task/{taskId}")
@@ -38,11 +44,36 @@ public class ApiHandoffController {
         return ResponseEntity.ok(apiHandoffService.createApiDoc(request, currentUser.getId()));
     }
 
+    @PutMapping("/{id}")
+    @PreAuthorize("hasAuthority('API_DOC_PUBLISH') or hasRole('ADMIN') or hasRole('MANAGER') or hasRole('EMPLOYEE')")
+    public ResponseEntity<ApiDocResponseDto> updateApiDoc(
+            @PathVariable Long id,
+            @AuthenticationPrincipal UserDetailsImpl currentUser,
+            @RequestBody UpdateApiDocRequest request) {
+        boolean isAdmin = currentUser.getAuthorities().stream()
+                .anyMatch(a -> a.getAuthority().equals("ROLE_ADMIN"));
+        return ResponseEntity.ok(apiHandoffService.updateApiDoc(id, request, currentUser.getId(), isAdmin));
+    }
+
     @PatchMapping("/{id}/status")
     public ResponseEntity<ApiDocResponseDto> updateStatus(
             @PathVariable Long id,
             @AuthenticationPrincipal UserDetailsImpl currentUser,
             @RequestBody UpdateApiDocStatusRequest request) {
         return ResponseEntity.ok(apiHandoffService.updateStatus(id, request, currentUser.getId()));
+    }
+
+    @PostMapping("/{id}/comments")
+    public ResponseEntity<ApiDocCommentDto> addComment(
+            @PathVariable Long id,
+            @AuthenticationPrincipal UserDetailsImpl currentUser,
+            @RequestBody CreateApiDocCommentRequest request) {
+        Long userId = currentUser != null ? currentUser.getId() : null;
+        return ResponseEntity.ok(apiHandoffService.addComment(id, request, userId));
+    }
+
+    @GetMapping("/{id}/comments")
+    public ResponseEntity<List<ApiDocCommentDto>> getComments(@PathVariable Long id) {
+        return ResponseEntity.ok(apiHandoffService.getComments(id));
     }
 }

@@ -23,6 +23,7 @@ import {
   Video,
   UserCheck
 } from 'lucide-react';
+import { PageLoader } from '../components/ui/LoadingSpinner';
 
 interface DashboardPageProps {
   onOpenTask: (taskId: number) => void;
@@ -95,7 +96,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onOpenTask, onNavi
       </div>
 
       {loading ? (
-        <div className="py-24 text-center text-sm text-text-secondary">Loading live metrics from database...</div>
+        <PageLoader message="Loading live operational metrics from database..." />
       ) : userRole === 'ROLE_ADMIN' ? (
         /* ========================================================
            1. LIVE ADMIN DASHBOARD (PostgreSQL Driven)
@@ -345,8 +346,8 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onOpenTask, onNavi
             </div>
           </div>
 
-          {/* 2-Column Grid */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          {/* Manager Grid */}
+          <div className="grid grid-cols-1 gap-6">
             {/* Team Workload */}
             <div className="bg-white p-6 rounded-2xl border border-border-custom shadow-xs">
               <div className="flex items-center justify-between mb-5">
@@ -374,40 +375,13 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onOpenTask, onNavi
                 )}
               </div>
             </div>
-
-            {/* Deals by Stage */}
-            <div className="bg-white p-6 rounded-2xl border border-border-custom shadow-xs">
-              <div className="flex items-center justify-between mb-5">
-                <h3 className="font-bold text-sm text-text-primary">CRM Deals Pipeline</h3>
-                <button
-                  onClick={() => onNavigateTab('crm')}
-                  className="text-xs text-primary font-semibold hover:underline flex items-center gap-1 cursor-pointer"
-                >
-                  View Deals &rarr;
-                </button>
-              </div>
-              <div className="space-y-3">
-                {(managerData?.dealsByStage && managerData.dealsByStage.length > 0) ? (
-                  managerData.dealsByStage.map((d, idx) => (
-                    <div key={idx} className="flex items-center justify-between py-2 border-b border-gray-100 text-xs">
-                      <span className="font-semibold text-text-primary capitalize">{d.stage?.toLowerCase()}</span>
-                      <span className="font-extrabold text-primary bg-purple-50 px-2.5 py-0.5 rounded-md border border-purple-200">
-                        {d.count} deal{Number(d.count) === 1 ? '' : 's'}
-                      </span>
-                    </div>
-                  ))
-                ) : (
-                  <div className="text-xs text-text-secondary py-4 text-center">No deals in pipeline.</div>
-                )}
-              </div>
-            </div>
           </div>
 
           {/* Bottom Security Notice (100% English) */}
           <div className="p-3.5 bg-amber-50/70 border border-amber-200/80 rounded-2xl text-xs text-amber-900 flex items-center gap-2.5">
             <Lock className="w-4 h-4 shrink-0 text-amber-700" />
             <span>
-              <strong>Restricted Access:</strong> Company revenue figures, full database activity logs, passwords, and executive permissions are restricted for Manager role.
+              <strong>Restricted Access:</strong> Client accounts, financial deals, revenue figures, passwords, and executive permissions are restricted for Manager role.
             </span>
           </div>
         </div>

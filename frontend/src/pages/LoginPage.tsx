@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { authApi } from '../services/api';
-import { Lock, Mail, ArrowRight, ShieldCheck, Key, X, CheckCircle2, AlertTriangle } from 'lucide-react';
+import { Lock, Mail, ArrowRight, ShieldCheck, Key, X, CheckCircle2, AlertTriangle, Loader2 } from 'lucide-react';
 import { GoogleLogin, CredentialResponse } from '@react-oauth/google';
+import { ButtonSpinner } from '../components/ui/LoadingSpinner';
 
 export const LoginPage: React.FC = () => {
   const { login, loginWithGoogle } = useAuth();
@@ -367,11 +368,11 @@ export const LoginPage: React.FC = () => {
 
             <button
               type="submit"
-              disabled={loading}
-              className="w-full py-2.5 bg-primary hover:bg-primary-hover text-white text-sm font-semibold rounded-lg shadow-sm hover:shadow-soft transition-all flex items-center justify-center gap-2 disabled:opacity-50"
+              disabled={loading || googleLoading}
+              className="w-full py-2.5 bg-primary hover:bg-primary-hover text-white text-sm font-semibold rounded-lg shadow-sm hover:shadow-soft transition-all flex items-center justify-center gap-2 disabled:opacity-50 cursor-pointer"
             >
               {loading ? (
-                <span>Signing in...</span>
+                <ButtonSpinner text="Signing in to platform..." />
               ) : (
                 <>
                   <span>Sign In to Platform</span>
@@ -391,7 +392,13 @@ export const LoginPage: React.FC = () => {
             </div>
 
             {/* Google OAuth Button */}
-            <div className="flex justify-center">
+            <div className="flex justify-center relative">
+              {googleLoading && (
+                <div className="absolute inset-0 bg-white/80 z-10 flex items-center justify-center gap-2 rounded-lg">
+                  <Loader2 className="w-4 h-4 text-primary animate-spin" />
+                  <span className="text-xs font-bold text-primary">Authenticating with Google...</span>
+                </div>
+              )}
               <GoogleLogin
                 onSuccess={handleGoogleSuccess}
                 onError={() => setError('Google sign-in failed. Please try again.')}

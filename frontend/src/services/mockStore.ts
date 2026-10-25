@@ -46,9 +46,9 @@ export const INITIAL_USERS: User[] = [
     isActive: true,
     isFirstLogin: false,
     permissions: [
-      'ROLE_MANAGER', 'USER_EDIT', 'TASK_CREATE', 'TASK_ASSIGN', 'TASK_EDIT',
-      'TIME_TRACK', 'TIME_EDIT_MANUAL', 'CHECKLIST_MANAGE', 'DISCUSSION_POST',
-      'API_DOC_REVIEW', 'MEETING_SCHEDULE', 'MEETING_EDIT_NOTES', 'LEAD_MANAGE', 'REPORT_VIEW'
+      'ROLE_MANAGER', 'PROJECT_CREATE', 'PROJECT_EDIT', 'TASK_CREATE', 'TASK_ASSIGN', 'TASK_EDIT',
+      'TASK_DELETE', 'TIME_TRACK', 'TIME_EDIT_MANUAL', 'CHECKLIST_MANAGE', 'DISCUSSION_POST',
+      'API_DOC_REVIEW', 'MEETING_SCHEDULE', 'MEETING_EDIT_NOTES', 'LEAD_VIEW_ALL', 'LEAD_MANAGE', 'DEAL_MANAGE', 'REPORT_VIEW'
     ]
   },
   {
@@ -61,8 +61,7 @@ export const INITIAL_USERS: User[] = [
     isActive: true,
     isFirstLogin: false,
     permissions: [
-      'ROLE_EMPLOYEE', 'TASK_CREATE', 'TASK_EDIT', 'TIME_TRACK', 'CHECKLIST_MANAGE',
-      'DISCUSSION_POST', 'MEETING_SCHEDULE'
+      'ROLE_EMPLOYEE'
     ]
   }
 ];
@@ -397,7 +396,11 @@ export const mockStore = {
       isActive: true,
       isFirstLogin: true,
       initialPassword: data.tempPassword || 'Pass@123',
-      permissions: data.extraPermissions || [safeRole, 'TASK_CREATE', 'TASK_EDIT', 'TIME_TRACK']
+      permissions: data.extraPermissions || (safeRole === 'ROLE_MANAGER' ? [
+        'ROLE_MANAGER', 'PROJECT_CREATE', 'PROJECT_EDIT', 'TASK_CREATE', 'TASK_ASSIGN', 'TASK_EDIT',
+        'TASK_DELETE', 'TIME_TRACK', 'TIME_EDIT_MANUAL', 'CHECKLIST_MANAGE', 'DISCUSSION_POST',
+        'API_DOC_REVIEW', 'MEETING_SCHEDULE', 'MEETING_EDIT_NOTES', 'LEAD_VIEW_ALL', 'LEAD_MANAGE', 'DEAL_MANAGE', 'REPORT_VIEW'
+      ] : [safeRole])
     };
     (newUser as any).role = safeRole;
     users.push(newUser);

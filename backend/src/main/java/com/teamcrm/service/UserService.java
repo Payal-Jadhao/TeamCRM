@@ -47,31 +47,19 @@ public class UserService {
     public List<UserProfileDto> getAllUsers() {
         return userRepository.findAll().stream()
                 .filter(u -> u.getEmail() == null || !u.getEmail().contains(".deleted."))
-                .map(u -> {
-                    Set<String> perms = new HashSet<>();
-                    if (u.getRole() != null) {
-                        perms.add(u.getRole().getName());
-                        if (u.getRole().getPermissions() != null) {
-                            u.getRole().getPermissions().forEach(p -> perms.add(p.getCode()));
-                        }
-                    }
-                    if (u.getExtraPermissions() != null) {
-                        u.getExtraPermissions().forEach(p -> perms.add(p.getCode()));
-                    }
-                    return new UserProfileDto(
-                            u.getId(),
-                            u.getEmail(),
-                            u.getFullName(),
-                            u.getRole() != null ? u.getRole().getName() : "ROLE_EMPLOYEE",
-                            u.getTeamTag(),
-                            u.getPhone(),
-                            u.getAvatarUrl(),
-                            u.getIsActive(),
-                            u.getIsFirstLogin(),
-                            perms,
-                            u.getInitialPassword() != null ? u.getInitialPassword() : (u.getEmail().equalsIgnoreCase(SUPER_ADMIN_EMAIL) ? "1234" : "••••••")
-                    );
-                }).collect(Collectors.toList());
+                .map(u -> new UserProfileDto(
+                        u.getId(),
+                        u.getEmail(),
+                        u.getFullName(),
+                        u.getRole() != null ? u.getRole().getName() : "ROLE_EMPLOYEE",
+                        u.getTeamTag(),
+                        u.getPhone(),
+                        u.getAvatarUrl(),
+                        u.getIsActive(),
+                        u.getIsFirstLogin(),
+                        resolveUserPermissions(u),
+                        u.getInitialPassword() != null ? u.getInitialPassword() : (u.getEmail().equalsIgnoreCase(SUPER_ADMIN_EMAIL) ? "1234" : "••••••")
+                )).collect(Collectors.toList());
     }
 
     @Transactional
@@ -114,6 +102,13 @@ public class UserService {
                 permissionRepository.findByCode(code).ifPresent(extras::add);
             }
             user.setExtraPermissions(extras);
+        } else if ("ROLE_MANAGER".equalsIgnoreCase(targetRole)) {
+            // Manager gets default task and project creation permissions
+            Set<Permission> defaultPerms = role.getPermissions() != null ? new HashSet<>(role.getPermissions()) : new HashSet<>();
+            user.setExtraPermissions(defaultPerms);
+        } else {
+            // Employee initially gets no extra permissions
+            user.setExtraPermissions(new HashSet<>());
         }
 
         User saved = userRepository.save(user);
@@ -152,15 +147,22 @@ public class UserService {
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "User not found"));
 
-        Set<Permission> permissions = new HashSet<>();
+        userRepository.deleteUserPermissions(userId);
+        if (user.getExtraPermissions() != null) {
+            user.getExtraPermissions().clear();
+        } else {
+            user.setExtraPermissions(new HashSet<>());
+        }
+
         if (permissionCodes != null) {
             for (String code : permissionCodes) {
-                permissionRepository.findByCode(code).ifPresent(permissions::add);
+                if (code != null && !code.isBlank() && !code.startsWith("ROLE_")) {
+                    permissionRepository.findByCode(code).ifPresent(user.getExtraPermissions()::add);
+                }
             }
         }
-        user.setExtraPermissions(permissions);
         user.setUpdatedAt(Instant.now());
-        userRepository.save(user);
+        userRepository.saveAndFlush(user);
 
         auditLogRepository.save(new AuditLog(
                 actorId, null, "USER_PERMISSIONS_UPDATE", "USER",
@@ -225,15 +227,22 @@ public class UserService {
         }
 
         if (request.extraPermissions() != null) {
-            Set<Permission> extras = new HashSet<>();
-            for (String code : request.extraPermissions()) {
-                permissionRepository.findByCode(code).ifPresent(extras::add);
+            userRepository.deleteUserPermissions(user.getId());
+            if (user.getExtraPermissions() != null) {
+                user.getExtraPermissions().clear();
+            } else {
+                user.setExtraPermissions(new HashSet<>());
             }
-            user.setExtraPermissions(extras);
+            for (String code : request.extraPermissions()) {
+                if (code != null && !code.isBlank() && !code.startsWith("ROLE_")) {
+                    permissionRepository.findByCode(code).ifPresent(user.getExtraPermissions()::add);
+                }
+            }
         }
 
         user.setUpdatedAt(Instant.now());
-        User saved = userRepository.save(user);
+        User saved = userRepository.saveAndFlush(user);
+
 
         auditLogRepository.save(new AuditLog(
                 actorId, null, "USER_UPDATE", "USER",
@@ -296,17 +305,6 @@ public class UserService {
         User u = userRepository.findById(id)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "User not found"));
 
-        Set<String> perms = new HashSet<>();
-        if (u.getRole() != null) {
-            perms.add(u.getRole().getName());
-            if (u.getRole().getPermissions() != null) {
-                u.getRole().getPermissions().forEach(p -> perms.add(p.getCode()));
-            }
-        }
-        if (u.getExtraPermissions() != null) {
-            u.getExtraPermissions().forEach(p -> perms.add(p.getCode()));
-        }
-
         return new UserProfileDto(
                 u.getId(),
                 u.getEmail(),
@@ -317,8 +315,25 @@ public class UserService {
                 u.getAvatarUrl(),
                 u.getIsActive(),
                 u.getIsFirstLogin(),
-                perms,
+                resolveUserPermissions(u),
                 u.getInitialPassword() != null ? u.getInitialPassword() : (u.getEmail().equalsIgnoreCase(SUPER_ADMIN_EMAIL) ? "1234" : "••••••")
         );
+    }
+
+    private Set<String> resolveUserPermissions(User u) {
+        Set<String> perms = new HashSet<>();
+        if (u.getRole() != null) {
+            perms.add(u.getRole().getName());
+            if ("ROLE_ADMIN".equalsIgnoreCase(u.getRole().getName())) {
+                permissionRepository.findAll().forEach(p -> perms.add(p.getCode()));
+            } else if (u.getExtraPermissions() != null && !u.getExtraPermissions().isEmpty()) {
+                u.getExtraPermissions().forEach(p -> perms.add(p.getCode()));
+            } else if ("ROLE_MANAGER".equalsIgnoreCase(u.getRole().getName())) {
+                if (u.getRole().getPermissions() != null) {
+                    u.getRole().getPermissions().forEach(p -> perms.add(p.getCode()));
+                }
+            }
+        }
+        return perms;
     }
 }

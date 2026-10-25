@@ -105,12 +105,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const logout = () => {
     setToken(null);
     setUser(null);
-    sessionStorage.removeItem('teamcrm_token');
-    sessionStorage.removeItem('teamcrm_refresh_token');
-    sessionStorage.removeItem('teamcrm_user');
-    localStorage.removeItem('teamcrm_token');
-    localStorage.removeItem('teamcrm_refresh_token');
-    localStorage.removeItem('teamcrm_user');
+    try {
+      localStorage.clear();
+      sessionStorage.clear();
+    } catch (e) {
+      console.error('Failed to clear storage on logout', e);
+    }
   };
 
   const hasPermission = (permissionCode: string): boolean => {

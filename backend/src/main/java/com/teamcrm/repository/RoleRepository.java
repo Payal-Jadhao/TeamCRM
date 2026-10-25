@@ -13,4 +13,10 @@ import java.util.Optional;
 @Repository
 public interface RoleRepository extends JpaRepository<Role, Long> {
     Optional<Role> findByName(String name);
+
+    @org.springframework.data.jpa.repository.Modifying
+    @org.springframework.transaction.annotation.Transactional
+    @Query(value = "DELETE FROM role_permissions WHERE role_id = :roleId", nativeQuery = true)
+    void deleteRolePermissions(@Param("roleId") Long roleId);
 }
+

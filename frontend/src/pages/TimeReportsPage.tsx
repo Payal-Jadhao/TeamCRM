@@ -12,6 +12,7 @@ import {
   Calendar,
   CheckCircle,
 } from 'lucide-react';
+import { TableLoader } from '../components/ui/LoadingSpinner';
 
 export const TimeReportsPage: React.FC = () => {
   const { user } = useAuth();
@@ -137,10 +138,19 @@ export const TimeReportsPage: React.FC = () => {
               </tr>
             </thead>
             <tbody className="divide-y divide-border-custom">
-              {tasks.map((task) => {
-                const actualHours = (task.totalLoggedSeconds || 0) / 3600;
-                const est = Number(task.estimatedHours || 1);
-                const percent = Math.min(100, Math.round((actualHours / est) * 100));
+              {loading ? (
+                <TableLoader colSpan={6} message="Loading time reports & sprint logs..." />
+              ) : tasks.length === 0 ? (
+                <tr>
+                  <td colSpan={6} className="px-6 py-12 text-center text-text-secondary">
+                    No tasks found to generate time breakdown.
+                  </td>
+                </tr>
+              ) : (
+                tasks.map((task) => {
+                  const actualHours = (task.totalLoggedSeconds || 0) / 3600;
+                  const est = Number(task.estimatedHours || 1);
+                  const percent = Math.min(100, Math.round((actualHours / est) * 100));
                 return (
                   <tr key={task.id} className="hover:bg-purple-50/40 transition-colors">
                     <td className="px-6 py-4 font-mono font-bold text-primary">{task.taskCode}</td>
@@ -166,7 +176,7 @@ export const TimeReportsPage: React.FC = () => {
                     </td>
                   </tr>
                 );
-              })}
+              }))}
             </tbody>
           </table>
         </div>

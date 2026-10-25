@@ -38,6 +38,14 @@ public class Deal {
     @JoinColumn(name = "assigned_to")
     private User assignedTo;
 
+    @ManyToMany(fetch = FetchType.LAZY)
+    @JoinTable(
+        name = "deal_members",
+        joinColumns = @JoinColumn(name = "deal_id"),
+        inverseJoinColumns = @JoinColumn(name = "user_id")
+    )
+    private java.util.Set<User> assignedUsers = new java.util.HashSet<>();
+
     @Column(columnDefinition = "TEXT")
     private String notes;
 
@@ -74,6 +82,9 @@ public class Deal {
 
     public User getAssignedTo() { return assignedTo; }
     public void setAssignedTo(User assignedTo) { this.assignedTo = assignedTo; }
+
+    public java.util.Set<User> getAssignedUsers() { return assignedUsers; }
+    public void setAssignedUsers(java.util.Set<User> assignedUsers) { this.assignedUsers = assignedUsers; }
 
     public String getNotes() { return notes; }
     public void setNotes(String notes) { this.notes = notes; }

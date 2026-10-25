@@ -117,12 +117,17 @@ public class AuthService {
         Set<String> permissions = new HashSet<>();
         if (user.getRole() != null) {
             permissions.add(user.getRole().getName());
-            if (user.getRole().getPermissions() != null) {
-                user.getRole().getPermissions().forEach(p -> permissions.add(p.getCode()));
+            if ("ROLE_ADMIN".equalsIgnoreCase(user.getRole().getName())) {
+                if (user.getRole().getPermissions() != null) {
+                    user.getRole().getPermissions().forEach(p -> permissions.add(p.getCode()));
+                }
+            } else if (user.getExtraPermissions() != null && !user.getExtraPermissions().isEmpty()) {
+                user.getExtraPermissions().forEach(p -> permissions.add(p.getCode()));
+            } else if ("ROLE_MANAGER".equalsIgnoreCase(user.getRole().getName())) {
+                if (user.getRole().getPermissions() != null) {
+                    user.getRole().getPermissions().forEach(p -> permissions.add(p.getCode()));
+                }
             }
-        }
-        if (user.getExtraPermissions() != null) {
-            user.getExtraPermissions().forEach(p -> permissions.add(p.getCode()));
         }
 
         return new UserProfileDto(
@@ -254,12 +259,17 @@ public class AuthService {
         Set<String> permissions = new HashSet<>();
         if (user.getRole() != null) {
             permissions.add(user.getRole().getName());
-            if (user.getRole().getPermissions() != null) {
-                permissions.addAll(user.getRole().getPermissions().stream().map(Permission::getCode).collect(Collectors.toSet()));
+            if ("ROLE_ADMIN".equalsIgnoreCase(user.getRole().getName())) {
+                if (user.getRole().getPermissions() != null) {
+                    user.getRole().getPermissions().forEach(p -> permissions.add(p.getCode()));
+                }
+            } else if (user.getExtraPermissions() != null) {
+                user.getExtraPermissions().forEach(p -> permissions.add(p.getCode()));
+            } else if ("ROLE_MANAGER".equalsIgnoreCase(user.getRole().getName())) {
+                if (user.getRole().getPermissions() != null) {
+                    user.getRole().getPermissions().forEach(p -> permissions.add(p.getCode()));
+                }
             }
-        }
-        if (user.getExtraPermissions() != null) {
-            permissions.addAll(user.getExtraPermissions().stream().map(Permission::getCode).collect(Collectors.toSet()));
         }
 
         return new AuthResponse(

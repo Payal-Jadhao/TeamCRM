@@ -14,4 +14,10 @@ public interface UserRepository extends JpaRepository<User, Long> {
     Boolean existsByEmail(String email);
     List<User> findByIsActiveTrue();
     List<User> findByTeamTag(String teamTag);
+
+    @org.springframework.data.jpa.repository.Modifying
+    @org.springframework.transaction.annotation.Transactional
+    @org.springframework.data.jpa.repository.Query(value = "DELETE FROM user_permissions WHERE user_id = :userId", nativeQuery = true)
+    void deleteUserPermissions(@org.springframework.data.repository.query.Param("userId") Long userId);
 }
+

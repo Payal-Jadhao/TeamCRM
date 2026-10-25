@@ -18,7 +18,7 @@ public class Project {
     @Column(nullable = false, length = 120)
     private String name;
 
-    @Column(nullable = false, unique = true, length = 20)
+    @Column(nullable = false, length = 60)
     private String keyCode; // e.g. 'CRM', 'PRJ'
 
     @Column(columnDefinition = "TEXT")

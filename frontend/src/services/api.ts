@@ -135,7 +135,7 @@ export const authApi = {
           role: found.roleName,
           teamTag: found.teamTag,
           isFirstLogin: false,
-          permissions: found.permissions || ['ROLE_EMPLOYEE', 'TASK_CREATE', 'TIME_TRACK'],
+          permissions: found.permissions && found.permissions.length > 0 ? found.permissions : [found.roleName || 'ROLE_EMPLOYEE'],
         };
       },
       { strict: true, msg401: 'Invalid email or password' }
@@ -269,7 +269,9 @@ export const userApi = {
   },
   updatePermissions: async (userId: number, permissionCodes: string[]): Promise<void> => {
     return safeCall(
-      () => apiClient.put(`/users/${userId}/permissions`, { userId, permissionCodes }).then(() => { }),
+      () => apiClient.put(`/users/${userId}/permissions`, { userId, permissionCodes }).then(() => {
+        mockStore.updateUser(userId, { permissions: permissionCodes });
+      }),
       () => {
         mockStore.updateUser(userId, { permissions: permissionCodes });
       }
@@ -513,6 +515,20 @@ export const apiHandoffApi = {
       () => mockStore.createApiDoc(data)
     );
   },
+  updateApiDoc: async (id: number, data: any): Promise<ApiDoc> => {
+    return safeCall(
+      () => apiClient.put<ApiDoc>(`/api-docs/${id}`, data).then((r) => r.data),
+      () => {
+        const docs = mockStore.getApiDocs();
+        const idx = docs.findIndex((d) => d.id === id);
+        if (idx !== -1) {
+          docs[idx] = { ...docs[idx], ...data, updatedAt: new Date().toISOString() };
+          return docs[idx];
+        }
+        return docs[0];
+      }
+    );
+  },
   addComment: async (apiDocId: number, text: string, authorName: string, authorRole?: string): Promise<any> => {
     return safeCall(
       () => apiClient.post(`/api-docs/${apiDocId}/comments`, { text, authorName, authorRole }).then((r) => r.data),
@@ -644,6 +660,27 @@ export const crmApi = {
       }
     );
   },
+  updateLead: async (id: number, data: any): Promise<Lead> => {
+    return safeCall(
+      () => apiClient.put<Lead>(`/crm/leads/${id}`, data).then((r) => r.data),
+      () => {
+        const leads = mockStore.getLeads();
+        const l = leads.find((x) => x.id === id) || leads[0];
+        Object.assign(l, data);
+        return l;
+      }
+    );
+  },
+  deleteLead: async (id: number): Promise<void> => {
+    return safeCall(
+      () => apiClient.delete(`/crm/leads/${id}`).then(() => {}),
+      () => {
+        const leads = mockStore.getLeads();
+        const idx = leads.findIndex((x) => x.id === id);
+        if (idx !== -1) leads.splice(idx, 1);
+      }
+    );
+  },
   getCustomers: async (): Promise<Customer[]> => {
     return safeCall(
       () => apiClient.get<Customer[]>('/crm/customers').then((r) => r.data),
@@ -665,6 +702,27 @@ export const crmApi = {
         };
         custs.unshift(c);
         return c;
+      }
+    );
+  },
+  updateCustomer: async (id: number, data: any): Promise<Customer> => {
+    return safeCall(
+      () => apiClient.put<Customer>(`/crm/customers/${id}`, data).then((r) => r.data),
+      () => {
+        const custs = mockStore.getCustomers();
+        const c = custs.find((x) => x.id === id) || custs[0];
+        Object.assign(c, data);
+        return c;
+      }
+    );
+  },
+  deleteCustomer: async (id: number): Promise<void> => {
+    return safeCall(
+      () => apiClient.delete(`/crm/customers/${id}`).then(() => {}),
+      () => {
+        const custs = mockStore.getCustomers();
+        const idx = custs.findIndex((x) => x.id === id);
+        if (idx !== -1) custs.splice(idx, 1);
       }
     );
   },
@@ -692,6 +750,27 @@ export const crmApi = {
         };
         deals.unshift(d);
         return d;
+      }
+    );
+  },
+  updateDeal: async (id: number, data: any): Promise<Deal> => {
+    return safeCall(
+      () => apiClient.put<Deal>(`/crm/deals/${id}`, data).then((r) => r.data),
+      () => {
+        const deals = mockStore.getDeals();
+        const d = deals.find((x) => x.id === id) || deals[0];
+        Object.assign(d, data);
+        return d;
+      }
+    );
+  },
+  deleteDeal: async (id: number): Promise<void> => {
+    return safeCall(
+      () => apiClient.delete(`/crm/deals/${id}`).then(() => {}),
+      () => {
+        const deals = mockStore.getDeals();
+        const idx = deals.findIndex((x) => x.id === id);
+        if (idx !== -1) deals.splice(idx, 1);
       }
     );
   },

@@ -35,6 +35,14 @@ public class Customer {
     @JoinColumn(name = "account_manager_id")
     private User accountManager;
 
+    @ManyToMany(fetch = FetchType.LAZY)
+    @JoinTable(
+        name = "customer_members",
+        joinColumns = @JoinColumn(name = "customer_id"),
+        inverseJoinColumns = @JoinColumn(name = "user_id")
+    )
+    private java.util.Set<User> assignedUsers = new java.util.HashSet<>();
+
     private Instant createdAt = Instant.now();
     private Instant updatedAt = Instant.now();
     private Boolean isDeleted = false;
@@ -67,6 +75,9 @@ public class Customer {
 
     public User getAccountManager() { return accountManager; }
     public void setAccountManager(User accountManager) { this.accountManager = accountManager; }
+
+    public java.util.Set<User> getAssignedUsers() { return assignedUsers; }
+    public void setAssignedUsers(java.util.Set<User> assignedUsers) { this.assignedUsers = assignedUsers; }
 
     public Instant getCreatedAt() { return createdAt; }
     public void setCreatedAt(Instant createdAt) { this.createdAt = createdAt; }

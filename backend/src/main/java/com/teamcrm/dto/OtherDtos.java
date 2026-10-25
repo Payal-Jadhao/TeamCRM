@@ -32,6 +32,7 @@ public class OtherDtos {
 
     // API Handoff
     public record CreateApiDocRequest(
+            Long projectId,
             Long taskId,
             String title,
             String httpMethod,
@@ -45,7 +46,27 @@ public class OtherDtos {
             String postmanUrl,
             String requestBodyJson,
             String responseBodyJson,
-            String changeNotes
+            String changeNotes,
+            List<Long> taggedUserIds
+    ) {}
+
+    public record UpdateApiDocRequest(
+            Long projectId,
+            Long taskId,
+            String title,
+            String httpMethod,
+            String endpoint,
+            String status,
+            String version,
+            String environment,
+            String authRequired,
+            String errorCodes,
+            String swaggerUrl,
+            String postmanUrl,
+            String requestBodyJson,
+            String responseBodyJson,
+            String changeNotes,
+            List<Long> taggedUserIds
     ) {}
 
     public record UpdateApiDocStatusRequest(
@@ -53,8 +74,26 @@ public class OtherDtos {
             String notes
     ) {}
 
+    public record ApiDocCommentDto(
+            Long id,
+            Long apiDocId,
+            Long authorId,
+            String authorName,
+            String authorRole,
+            String text,
+            Instant createdAt
+    ) {}
+
+    public record CreateApiDocCommentRequest(
+            String text,
+            String authorName,
+            String authorRole
+    ) {}
+
     public record ApiDocResponseDto(
             Long id,
+            Long projectId,
+            String projectName,
             Long taskId,
             String taskCode,
             String taskTitle,
@@ -73,6 +112,10 @@ public class OtherDtos {
             String changeNotes,
             Long createdById,
             String createdByName,
+            List<Long> taggedUserIds,
+            List<String> taggedUserNames,
+            List<String> taggedUserEmails,
+            List<ApiDocCommentDto> comments,
             Instant createdAt,
             Instant updatedAt
     ) {}
@@ -146,7 +189,8 @@ public class OtherDtos {
             String primaryContactEmail,
             String primaryContactPhone,
             String address,
-            Long accountManagerId
+            Long accountManagerId,
+            List<Long> assignedUserIds
     ) {}
 
     public record CustomerResponseDto(
@@ -160,6 +204,8 @@ public class OtherDtos {
             String address,
             Long accountManagerId,
             String accountManagerName,
+            List<Long> assignedUserIds,
+            List<String> assignedUserNames,
             Instant createdAt
     ) {}
 
@@ -172,7 +218,8 @@ public class OtherDtos {
             String currency,
             LocalDate expectedCloseDate,
             Long assignedToId,
-            String notes
+            String notes,
+            List<Long> assignedUserIds
     ) {}
 
     public record DealResponseDto(
@@ -188,6 +235,8 @@ public class OtherDtos {
             LocalDate expectedCloseDate,
             Long assignedToId,
             String assignedToName,
+            List<Long> assignedUserIds,
+            List<String> assignedUserNames,
             String notes,
             Instant createdAt
     ) {}

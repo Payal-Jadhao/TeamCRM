@@ -397,15 +397,7 @@ export const Topbar: React.FC<TopbarProps> = ({
 
       {/* Right Controls */}
       <div className="flex items-center gap-4">
-        {/* Quick Add Button */}
-        <button
-          onClick={onQuickAdd}
-          className="flex items-center gap-1.5 px-3 py-2 bg-purple-100 hover:bg-purple-200 text-primary text-sm font-semibold rounded-lg transition-colors"
-          title="Quick Create Task"
-        >
-          <Plus className="w-4 h-4" />
-          <span className="hidden sm:inline">Create</span>
-        </button>
+        {/* Live Running Timer Chip (Top Priority USP) */}
 
         {/* Live Running Timer Chip (Top Priority USP) */}
         {runningTimer ? (

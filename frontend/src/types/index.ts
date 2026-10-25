@@ -130,8 +130,20 @@ export interface TaskComment {
 
 export type ApiDocStatus = 'DRAFT' | 'READY_FOR_INTEGRATION' | 'INTEGRATING' | 'INTEGRATED' | 'CHANGE_REQUESTED';
 
+export interface ApiDocComment {
+  id: number;
+  apiDocId: number;
+  authorId?: number;
+  authorName: string;
+  authorRole?: string;
+  text: string;
+  createdAt: string;
+}
+
 export interface ApiDoc {
   id: number;
+  projectId?: number;
+  projectName?: string;
   taskId?: number;
   taskCode?: string;
   taskTitle?: string;
@@ -150,6 +162,10 @@ export interface ApiDoc {
   changeNotes?: string;
   createdById?: number;
   createdByName?: string;
+  taggedUserIds?: number[];
+  taggedUserNames?: string[];
+  taggedUserEmails?: string[];
+  comments?: ApiDocComment[];
   createdAt: string;
   updatedAt: string;
 }
@@ -200,6 +216,8 @@ export interface Customer {
   address?: string;
   accountManagerId?: number;
   accountManagerName?: string;
+  assignedUserIds?: number[];
+  assignedUserNames?: string[];
   createdAt: string;
 }
 
@@ -216,6 +234,8 @@ export interface Deal {
   expectedCloseDate?: string;
   assignedToId?: number;
   assignedToName?: string;
+  assignedUserIds?: number[];
+  assignedUserNames?: string[];
   notes?: string;
   createdAt: string;
 }

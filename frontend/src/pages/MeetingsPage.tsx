@@ -19,6 +19,7 @@ import {
   AlertTriangle,
   Loader2,
 } from 'lucide-react';
+import { PageLoader, ButtonSpinner } from '../components/ui/LoadingSpinner';
 
 interface MeetingsPageProps {
   initialTaskForMeeting?: Task | null;
@@ -34,6 +35,7 @@ export const MeetingsPage: React.FC<MeetingsPageProps> = ({
   const [users, setUsers] = useState<User[]>([]);
   const [tasks, setTasks] = useState<Task[]>([]);
   const [loading, setLoading] = useState(true);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   // Schedule Modal
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -59,8 +61,11 @@ export const MeetingsPage: React.FC<MeetingsPageProps> = ({
   // Delete Confirmation Modal
   const [meetingToDelete, setMeetingToDelete] = useState<Meeting | null>(null);
 
-  // Role Permissions: Only Admin and Manager can schedule, edit, or delete meetings
-  const canManageMeetings = user?.roleName === 'ROLE_ADMIN' || user?.roleName === 'ROLE_MANAGER';
+  // Role Permissions: Admin, Manager or users with MEETING_SCHEDULE permission
+  const canManageMeetings =
+    user?.roleName === 'ROLE_ADMIN' ||
+    user?.roleName === 'ROLE_MANAGER' ||
+    user?.permissions?.includes('MEETING_SCHEDULE');
 
   // Selected Meeting Details & AI
   const [activeMeeting, setActiveMeeting] = useState<Meeting | null>(null);
@@ -268,7 +273,9 @@ export const MeetingsPage: React.FC<MeetingsPageProps> = ({
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Meetings List */}
         <div className="lg:col-span-2 space-y-4">
-          {meetings.length === 0 ? (
+          {loading ? (
+            <PageLoader message="Loading calendar meetings & sync sessions..." />
+          ) : meetings.length === 0 ? (
             <div className="p-12 text-center bg-white rounded-2xl border border-border-custom text-text-secondary text-xs">
               No meetings scheduled yet. Click "Schedule Meeting" to get started.
             </div>

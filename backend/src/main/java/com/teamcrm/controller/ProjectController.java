@@ -6,6 +6,7 @@ import com.teamcrm.entity.User;
 import com.teamcrm.repository.ProjectRepository;
 import com.teamcrm.repository.UserRepository;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.*;
 
@@ -42,10 +43,19 @@ public class ProjectController {
 
     @PostMapping
     @Transactional
+    @PreAuthorize("hasAuthority('PROJECT_CREATE') or hasRole('ADMIN')")
     public ResponseEntity<ProjectResponseDto> createProject(@RequestBody Map<String, Object> payload) {
         Project project = new Project();
         project.setName((String) payload.getOrDefault("name", "New Project"));
-        project.setKeyCode(((String) payload.getOrDefault("keyCode", "PRJ")).toUpperCase().trim());
+        String key = ((String) payload.getOrDefault("keyCode", "PRJ")).toUpperCase().trim();
+        Optional<Project> existing = projectRepository.findByKeyCodeAndIsDeletedFalse(key);
+        if (existing.isPresent()) {
+            throw new org.springframework.web.server.ResponseStatusException(
+                    org.springframework.http.HttpStatus.CONFLICT,
+                    "Project Key Code '" + key + "' is already in use by project '" + existing.get().getName() + "'."
+            );
+        }
+        project.setKeyCode(key);
         project.setDescription((String) payload.getOrDefault("description", ""));
         project.setStatus((String) payload.getOrDefault("status", "ACTIVE"));
         project.setCreatedAt(Instant.now());
@@ -75,10 +85,23 @@ public class ProjectController {
 
     @PutMapping("/{id}")
     @Transactional
+    @PreAuthorize("hasAuthority('PROJECT_EDIT') or hasAuthority('PROJECT_CREATE') or hasRole('ADMIN')")
     public ResponseEntity<ProjectResponseDto> updateProject(@PathVariable Long id, @RequestBody Map<String, Object> payload) {
         return projectRepository.findByIdWithMembers(id).map(project -> {
             if (payload.containsKey("name")) project.setName((String) payload.get("name"));
-            if (payload.containsKey("keyCode")) project.setKeyCode(((String) payload.get("keyCode")).toUpperCase().trim());
+            if (payload.containsKey("keyCode")) {
+                String newKey = ((String) payload.get("keyCode")).toUpperCase().trim();
+                if (!newKey.equalsIgnoreCase(project.getKeyCode())) {
+                    Optional<Project> existing = projectRepository.findByKeyCodeAndIsDeletedFalse(newKey);
+                    if (existing.isPresent() && !existing.get().getId().equals(project.getId())) {
+                        throw new org.springframework.web.server.ResponseStatusException(
+                                org.springframework.http.HttpStatus.CONFLICT,
+                                "Project Key Code '" + newKey + "' is already in use by project '" + existing.get().getName() + "'."
+                        );
+                    }
+                    project.setKeyCode(newKey);
+                }
+            }
             if (payload.containsKey("description")) project.setDescription((String) payload.get("description"));
             if (payload.containsKey("status")) project.setStatus((String) payload.get("status"));
             project.setUpdatedAt(Instant.now());
@@ -109,9 +132,13 @@ public class ProjectController {
 
     @DeleteMapping("/{id}")
     @Transactional
+    @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<Void> deleteProject(@PathVariable Long id) {
         return projectRepository.findById(id).map(project -> {
             project.setIsDeleted(true);
+            if (project.getKeyCode() != null && !project.getKeyCode().contains("_DEL_")) {
+                project.setKeyCode(project.getKeyCode() + "_DEL_" + project.getId());
+            }
             projectRepository.save(project);
             return ResponseEntity.ok().<Void>build();
         }).orElse(ResponseEntity.notFound().build());

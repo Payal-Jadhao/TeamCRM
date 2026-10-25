@@ -38,6 +38,7 @@ public class DataInitializer implements CommandLineRunner {
     private final NotificationRepository notificationRepository;
     private final AuditLogRepository auditLogRepository;
     private final PasswordEncoder passwordEncoder;
+    private final org.springframework.jdbc.core.JdbcTemplate jdbcTemplate;
 
     public DataInitializer(RoleRepository roleRepository,
             PermissionRepository permissionRepository,
@@ -56,7 +57,8 @@ public class DataInitializer implements CommandLineRunner {
             MasterRepository masterRepository,
             NotificationRepository notificationRepository,
             AuditLogRepository auditLogRepository,
-            PasswordEncoder passwordEncoder) {
+            PasswordEncoder passwordEncoder,
+            org.springframework.jdbc.core.JdbcTemplate jdbcTemplate) {
         this.roleRepository = roleRepository;
         this.permissionRepository = permissionRepository;
         this.teamRepository = teamRepository;
@@ -75,11 +77,45 @@ public class DataInitializer implements CommandLineRunner {
         this.notificationRepository = notificationRepository;
         this.auditLogRepository = auditLogRepository;
         this.passwordEncoder = passwordEncoder;
+        this.jdbcTemplate = jdbcTemplate;
     }
 
     @Override
     @Transactional
     public void run(String... args) {
+        // 0. Drop any legacy unique constraint on projects.key_code to support soft-deletion safely
+        try {
+            jdbcTemplate.execute("ALTER TABLE projects DROP CONSTRAINT IF EXISTS UK9SSBIHUCO0QKIQVPCR2O0FURX_INDEX_F");
+        } catch (Exception ignored) {}
+        try {
+            jdbcTemplate.execute("DROP INDEX IF EXISTS UK9SSBIHUCO0QKIQVPCR2O0FURX_INDEX_F");
+        } catch (Exception ignored) {}
+        try {
+            List<String> constraints = jdbcTemplate.query(
+                "SELECT CONSTRAINT_NAME FROM INFORMATION_SCHEMA.CONSTRAINTS WHERE TABLE_NAME = 'PROJECTS' AND CONSTRAINT_TYPE = 'UNIQUE'",
+                (rs, rowNum) -> rs.getString("CONSTRAINT_NAME")
+            );
+            for (String cName : constraints) {
+                try {
+                    jdbcTemplate.execute("ALTER TABLE projects DROP CONSTRAINT IF EXISTS " + cName);
+                } catch (Exception ignored) {}
+            }
+        } catch (Exception ignored) {}
+        try {
+            List<String> indexes = jdbcTemplate.query(
+                "SELECT INDEX_NAME FROM INFORMATION_SCHEMA.INDEXES WHERE TABLE_NAME = 'PROJECTS' AND COLUMN_NAME = 'KEY_CODE' AND NON_UNIQUE = FALSE",
+                (rs, rowNum) -> rs.getString("INDEX_NAME")
+            );
+            for (String idxName : indexes) {
+                try {
+                    jdbcTemplate.execute("DROP INDEX IF EXISTS " + idxName);
+                } catch (Exception ignored) {}
+            }
+        } catch (Exception ignored) {}
+        try {
+            jdbcTemplate.execute("UPDATE projects SET key_code = CONCAT(key_code, '_DEL_', id) WHERE is_deleted = true AND key_code NOT LIKE '%_DEL_%'");
+        } catch (Exception ignored) {}
+
         // 1. Permissions
         if (permissionRepository.count() == 0) {
             List<String[]> permData = List.of(
@@ -121,31 +157,41 @@ public class DataInitializer implements CommandLineRunner {
         // 2. Roles
         Role adminRole = roleRepository.findByName("ROLE_ADMIN").orElseGet(() -> {
             Role r = new Role("ROLE_ADMIN", "Super administrator");
-            r.setPermissions(new HashSet<>(allPerms));
             return roleRepository.save(r);
         });
+        adminRole.setPermissions(new HashSet<>(allPerms));
+        adminRole = roleRepository.save(adminRole);
 
-        // Manager: everything EXCEPT user/role administration (only super admin creates
-        // users)
+        // Manager: by default has task & project creation permissions + core management features
         Role managerRole = roleRepository.findByName("ROLE_MANAGER").orElseGet(() -> {
             Role r = new Role("ROLE_MANAGER", "Team manager");
-            Set<String> blocked = Set.of("ROLE_MANAGE", "USER_CREATE", "USER_EDIT", "USER_DEACTIVATE");
-            Set<Permission> mgrPerms = allPerms.stream()
-                    .filter(p -> !blocked.contains(p.getCode()))
-                    .collect(Collectors.toSet());
-            r.setPermissions(mgrPerms);
             return roleRepository.save(r);
         });
+        Set<Permission> mgrPerms = allPerms.stream()
+                .filter(p -> List.of(
+                        "PROJECT_CREATE", "PROJECT_EDIT",
+                        "TASK_CREATE", "TASK_ASSIGN", "TASK_EDIT", "TASK_DELETE",
+                        "TIME_TRACK", "CHECKLIST_MANAGE", "DISCUSSION_POST",
+                        "MEETING_SCHEDULE", "MEETING_EDIT_NOTES",
+                        "LEAD_VIEW_ALL", "LEAD_MANAGE", "DEAL_MANAGE", "REPORT_VIEW"
+                ).contains(p.getCode()))
+                .collect(Collectors.toSet());
+        managerRole.setPermissions(mgrPerms);
+        managerRole = roleRepository.save(managerRole);
 
+        // Employee: initially NO permissions (as specified: empty set)
         Role employeeRole = roleRepository.findByName("ROLE_EMPLOYEE").orElseGet(() -> {
             Role r = new Role("ROLE_EMPLOYEE", "Individual contributor");
-            Set<Permission> empPerms = allPerms.stream()
-                    .filter(p -> List.of("TASK_CREATE", "TASK_EDIT", "TIME_TRACK", "CHECKLIST_MANAGE",
-                            "DISCUSSION_POST", "API_DOC_REVIEW", "LEAD_MANAGE", "DEAL_MANAGE").contains(p.getCode()))
-                    .collect(Collectors.toSet());
-            r.setPermissions(empPerms);
             return roleRepository.save(r);
         });
+        roleRepository.deleteRolePermissions(employeeRole.getId());
+        if (employeeRole.getPermissions() != null) {
+            employeeRole.getPermissions().clear();
+        } else {
+            employeeRole.setPermissions(new HashSet<>());
+        }
+        employeeRole = roleRepository.saveAndFlush(employeeRole);
+
 
         // 3. Teams
         if (teamRepository.count() == 0) {
@@ -210,12 +256,13 @@ public class DataInitializer implements CommandLineRunner {
             manager.setEmail("jayshreejadhao0206@gmail.com");
             manager.setFullName("Jayshree Jadhao");
             manager.setIsFirstLogin(false);
+            manager.setPasswordHash(passwordEncoder.encode("1234"));
+            manager.setRole(managerRole);
+            manager.setExtraPermissions(new HashSet<>(mgrPerms));
+            manager.setTeamTag("FRONTEND");
+            manager.setIsActive(true);
+            userRepository.save(manager);
         }
-        manager.setPasswordHash(passwordEncoder.encode("1234"));
-        manager.setRole(managerRole);
-        manager.setTeamTag("FRONTEND");
-        manager.setIsActive(true);
-        manager = userRepository.save(manager);
 
         // Employee: Rahaa Malhotra
         User employee = userRepository.findByEmail("rahaamalhotra@gmail.com").orElse(null);
@@ -224,12 +271,20 @@ public class DataInitializer implements CommandLineRunner {
             employee.setEmail("rahaamalhotra@gmail.com");
             employee.setFullName("Rahaa Malhotra");
             employee.setIsFirstLogin(false);
+            employee.setPasswordHash(passwordEncoder.encode("1234"));
+            employee.setRole(employeeRole);
+            employee.setExtraPermissions(new HashSet<>());
+            employee.setTeamTag("FRONTEND");
+            employee.setIsActive(true);
+            userRepository.save(employee);
+        } else {
+            userRepository.deleteUserPermissions(employee.getId());
+            if (employee.getExtraPermissions() != null) {
+                employee.getExtraPermissions().clear();
+            }
+            userRepository.saveAndFlush(employee);
         }
-        employee.setPasswordHash(passwordEncoder.encode("1234"));
-        employee.setRole(employeeRole);
-        employee.setTeamTag("FRONTEND");
-        employee.setIsActive(true);
-        employee = userRepository.save(employee);
+
 
         // Purge any rogue users that were auto-created by previous Google OAuth bugs
         userRepository.findByEmail("payaljadhao2709@gmail.com").ifPresent(rogue -> {

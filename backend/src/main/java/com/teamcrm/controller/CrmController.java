@@ -40,6 +40,22 @@ public class CrmController {
         return ResponseEntity.ok(crmService.updateLeadStatus(id, status, currentUser != null ? currentUser.getId() : 1L));
     }
 
+    @PutMapping("/leads/{id}")
+    public ResponseEntity<LeadResponseDto> updateLead(
+            @PathVariable Long id,
+            @RequestBody LeadRequestDto request,
+            @AuthenticationPrincipal UserDetailsImpl currentUser) {
+        return ResponseEntity.ok(crmService.updateLead(id, request, currentUser != null ? currentUser.getId() : 1L));
+    }
+
+    @DeleteMapping("/leads/{id}")
+    public ResponseEntity<Void> deleteLead(
+            @PathVariable Long id,
+            @AuthenticationPrincipal UserDetailsImpl currentUser) {
+        crmService.deleteLead(id, currentUser != null ? currentUser.getId() : 1L);
+        return ResponseEntity.ok().build();
+    }
+
     // Customers
     @GetMapping("/customers")
     public ResponseEntity<List<CustomerResponseDto>> getCustomers() {
@@ -49,6 +65,22 @@ public class CrmController {
     @PostMapping("/customers")
     public ResponseEntity<CustomerResponseDto> createCustomer(@RequestBody CustomerRequestDto request) {
         return ResponseEntity.ok(crmService.createCustomer(request));
+    }
+
+    @PutMapping("/customers/{id}")
+    public ResponseEntity<CustomerResponseDto> updateCustomer(
+            @PathVariable Long id,
+            @RequestBody CustomerRequestDto request,
+            @AuthenticationPrincipal UserDetailsImpl currentUser) {
+        return ResponseEntity.ok(crmService.updateCustomer(id, request, currentUser != null ? currentUser.getId() : 1L));
+    }
+
+    @DeleteMapping("/customers/{id}")
+    public ResponseEntity<Void> deleteCustomer(
+            @PathVariable Long id,
+            @AuthenticationPrincipal UserDetailsImpl currentUser) {
+        crmService.deleteCustomer(id, currentUser != null ? currentUser.getId() : 1L);
+        return ResponseEntity.ok().build();
     }
 
     // Deals
@@ -62,6 +94,22 @@ public class CrmController {
             @AuthenticationPrincipal UserDetailsImpl currentUser,
             @RequestBody DealRequestDto request) {
         return ResponseEntity.ok(crmService.createDeal(request, currentUser != null ? currentUser.getId() : 1L));
+    }
+
+    @PutMapping("/deals/{id}")
+    public ResponseEntity<DealResponseDto> updateDeal(
+            @PathVariable Long id,
+            @RequestBody DealRequestDto request,
+            @AuthenticationPrincipal UserDetailsImpl currentUser) {
+        return ResponseEntity.ok(crmService.updateDeal(id, request, currentUser != null ? currentUser.getId() : 1L));
+    }
+
+    @DeleteMapping("/deals/{id}")
+    public ResponseEntity<Void> deleteDeal(
+            @PathVariable Long id,
+            @AuthenticationPrincipal UserDetailsImpl currentUser) {
+        crmService.deleteDeal(id, currentUser != null ? currentUser.getId() : 1L);
+        return ResponseEntity.ok().build();
     }
 
     @PatchMapping("/deals/{id}/stage")

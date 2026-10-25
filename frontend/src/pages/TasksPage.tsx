@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
-import { taskApi, timeApi, discussionApi, apiHandoffApi, aiApi, userApi, projectApi } from '../services/api';
+import { taskApi, timeApi, discussionApi, apiHandoffApi, aiApi, userApi, projectApi, masterApi } from '../services/api';
 import type {
   Task,
   ChecklistItem,
@@ -10,6 +10,7 @@ import type {
   User,
   TaskStatus,
   Project,
+  MasterItem,
 } from '../types';
 import { StatusBadge, PriorityBadge, TeamTagChip } from '../components/ui/Badge';
 import { Modal } from '../components/ui/Modal';
@@ -42,6 +43,7 @@ import {
   ExternalLink,
   ChevronRight,
 } from 'lucide-react';
+import { PageLoader, ButtonSpinner } from '../components/ui/LoadingSpinner';
 
 interface TasksPageProps {
   onScheduleMeeting: (task: Task) => void;
@@ -63,10 +65,12 @@ export const TasksPage: React.FC<TasksPageProps> = ({
   onClearSearch,
 }) => {
   const { user, hasPermission } = useAuth();
+  const canCreateTask = user?.roleName === 'ROLE_ADMIN' || hasPermission('TASK_CREATE');
   const [tasks, setTasks] = useState<Task[]>([]);
   const [users, setUsers] = useState<User[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
   const [loading, setLoading] = useState(true);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   // Filters
   const [selectedProjectFilter, setSelectedProjectFilter] = useState<string>(
@@ -364,17 +368,23 @@ export const TasksPage: React.FC<TasksPageProps> = ({
     }
   }, [selectedTaskId]);
 
+  const [taskTypeMasters, setTaskTypeMasters] = useState<MasterItem[]>([]);
+
   const loadData = async () => {
     setLoading(true);
     try {
-      const [allTasks, allUsers, allProjects] = await Promise.all([
+      const [allTasks, allUsers, allProjects, masters] = await Promise.all([
         taskApi.getTasks(),
         userApi.getUsers(),
         projectApi.getProjects(),
+        masterApi.getMasters('TASK_TYPE').catch(() => []),
       ]);
       setTasks(allTasks);
       setUsers(allUsers);
       setProjects(allProjects);
+      if (masters && masters.length > 0) {
+        setTaskTypeMasters(masters.filter((m) => m.isActive !== false));
+      }
       if (allProjects.length > 0 && !selectedProjectId) {
         setNewTaskProjectId(allProjects[0].id);
       }
@@ -384,6 +394,16 @@ export const TasksPage: React.FC<TasksPageProps> = ({
       setLoading(false);
     }
   };
+
+  const availableTaskTypes = taskTypeMasters.length > 0
+    ? taskTypeMasters.map((m) => ({ code: m.keyCode || m.name.toUpperCase(), name: m.name }))
+    : [
+        { code: 'FEATURE', name: 'Feature' },
+        { code: 'BUG', name: 'Bug Fix' },
+        { code: 'QUERY', name: 'Query / Discussion' },
+        { code: 'CHORE', name: 'Chore / Maintenance' },
+      ];
+
 
   const loadTaskDetails = async (taskId: number) => {
     try {
@@ -513,6 +533,7 @@ export const TasksPage: React.FC<TasksPageProps> = ({
   // Create Task Submit
   const handleCreateTask = async (e: React.FormEvent) => {
     e.preventDefault();
+    setIsSubmitting(true);
     try {
       let assigneeIdsParam: string | undefined = undefined;
       let primaryAssigneeId: number | undefined = undefined;
@@ -548,6 +569,8 @@ export const TasksPage: React.FC<TasksPageProps> = ({
       showToast(`Task ${created.taskCode} created successfully!`, 'success');
     } catch (e: any) {
       showToast(e.response?.data?.message || 'Failed to create task', 'error');
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -741,10 +764,9 @@ export const TasksPage: React.FC<TasksPageProps> = ({
                   className="px-2.5 py-1.5 text-xs bg-purple-50 text-text-primary rounded-lg border border-border-custom focus:border-primary outline-none"
                 >
                   <option value="ALL">All Types</option>
-                  <option value="FEATURE">Feature</option>
-                  <option value="BUG">Bug</option>
-                  <option value="QUERY">Query</option>
-                  <option value="CHORE">Chore</option>
+                  {availableTaskTypes.map((t) => (
+                    <option key={t.code} value={t.code}>{t.name}</option>
+                  ))}
                 </select>
               </>
             )}
@@ -780,20 +802,22 @@ export const TasksPage: React.FC<TasksPageProps> = ({
           </div>
 
           {/* Create Task Button */}
-          <button
-            onClick={() => {
-              if (selectedProjectFilter !== 'ALL') {
-                setNewTaskProjectId(Number(selectedProjectFilter));
-              } else if (accessibleProjects.length > 0) {
-                setNewTaskProjectId(accessibleProjects[0].id);
-              }
-              setIsCreateModalOpen(true);
-            }}
-            className="flex items-center gap-2 px-4 py-2 bg-primary hover:bg-primary-hover text-white text-xs font-bold rounded-xl shadow-xs transition-colors cursor-pointer shrink-0"
-          >
-            <Plus className="w-4 h-4" />
-            <span>New Task</span>
-          </button>
+          {canCreateTask && (
+            <button
+              onClick={() => {
+                if (selectedProjectFilter !== 'ALL') {
+                  setNewTaskProjectId(Number(selectedProjectFilter));
+                } else if (accessibleProjects.length > 0) {
+                  setNewTaskProjectId(accessibleProjects[0].id);
+                }
+                setIsCreateModalOpen(true);
+              }}
+              className="flex items-center gap-2 px-4 py-2 bg-primary hover:bg-primary-hover text-white text-xs font-bold rounded-xl shadow-xs transition-colors cursor-pointer shrink-0"
+            >
+              <Plus className="w-4 h-4" />
+              <span>New Task</span>
+            </button>
+          )}
         </div>
       </div>
 
@@ -851,10 +875,9 @@ export const TasksPage: React.FC<TasksPageProps> = ({
         </div>
       )}
 
-      {/* ========================================================
-          CORPORATE ENTERPRISE TABLE VIEW (DEFAULT & SIMPLE)
-          ======================================================== */}
-      {viewMode === 'table' ? (
+      {loading ? (
+        <PageLoader message="Loading tasks, boards and sprints from database..." />
+      ) : viewMode === 'table' ? (
         <div className="bg-white rounded-2xl border border-border-custom shadow-xs overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full text-left border-collapse">
@@ -1855,10 +1878,9 @@ export const TasksPage: React.FC<TasksPageProps> = ({
                 onChange={(e) => setNewTaskType(e.target.value)}
                 className="w-full px-3 py-2 bg-purple-50 text-xs text-text-primary rounded-lg border border-border-custom focus:border-primary outline-none"
               >
-                <option value="FEATURE">Feature</option>
-                <option value="BUG">Bug</option>
-                <option value="QUERY">Query</option>
-                <option value="CHORE">Chore</option>
+                {availableTaskTypes.map((t) => (
+                  <option key={t.code} value={t.code}>{t.name}</option>
+                ))}
               </select>
             </div>
 
@@ -2002,9 +2024,10 @@ export const TasksPage: React.FC<TasksPageProps> = ({
 
           <button
             type="submit"
-            className="w-full py-2.5 bg-primary hover:bg-primary-hover text-white text-xs font-bold rounded-xl shadow-xs transition-colors"
+            disabled={isSubmitting}
+            className="w-full py-2.5 bg-primary hover:bg-primary-hover text-white text-xs font-bold rounded-xl shadow-xs transition-colors flex items-center justify-center gap-2 disabled:opacity-50"
           >
-            Create Task
+            {isSubmitting ? <ButtonSpinner text="Creating Task..." /> : 'Create Task'}
           </button>
         </form>
       </Modal>
@@ -2064,10 +2087,9 @@ export const TasksPage: React.FC<TasksPageProps> = ({
                 onChange={(e) => setEditType(e.target.value)}
                 className="w-full px-3 py-2 bg-purple-50 text-xs text-text-primary rounded-lg border border-border-custom focus:border-primary outline-none"
               >
-                <option value="FEATURE">Feature</option>
-                <option value="BUG">Bug</option>
-                <option value="QUERY">Query</option>
-                <option value="CHORE">Chore</option>
+                {availableTaskTypes.map((t) => (
+                  <option key={t.code} value={t.code}>{t.name}</option>
+                ))}
               </select>
             </div>
 

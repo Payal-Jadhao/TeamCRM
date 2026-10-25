@@ -2,6 +2,10 @@ package com.teamcrm.entity;
 
 import jakarta.persistence.*;
 import java.time.Instant;
+import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Set;
 
 @Entity
 @Table(name = "api_docs")
@@ -9,6 +13,10 @@ public class ApiDoc {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
+
+    @ManyToOne(fetch = FetchType.EAGER)
+    @JoinColumn(name = "project_id")
+    private Project project;
 
     @ManyToOne(fetch = FetchType.EAGER)
     @JoinColumn(name = "task_id")
@@ -57,6 +65,18 @@ public class ApiDoc {
     @JoinColumn(name = "created_by")
     private User createdBy;
 
+    @ManyToMany(fetch = FetchType.LAZY)
+    @JoinTable(
+        name = "api_doc_tagged_users",
+        joinColumns = @JoinColumn(name = "api_doc_id"),
+        inverseJoinColumns = @JoinColumn(name = "user_id")
+    )
+    private Set<User> taggedUsers = new HashSet<>();
+
+    @OneToMany(mappedBy = "apiDoc", cascade = CascadeType.ALL, orphanRemoval = true)
+    @OrderBy("createdAt ASC")
+    private List<ApiDocComment> comments = new ArrayList<>();
+
     private Instant createdAt = Instant.now();
     private Instant updatedAt = Instant.now();
     private Boolean isDeleted = false;
@@ -65,6 +85,9 @@ public class ApiDoc {
 
     public Long getId() { return id; }
     public void setId(Long id) { this.id = id; }
+
+    public Project getProject() { return project; }
+    public void setProject(Project project) { this.project = project; }
 
     public Task getTask() { return task; }
     public void setTask(Task task) { this.task = task; }
@@ -110,6 +133,12 @@ public class ApiDoc {
 
     public User getCreatedBy() { return createdBy; }
     public void setCreatedBy(User createdBy) { this.createdBy = createdBy; }
+
+    public Set<User> getTaggedUsers() { return taggedUsers; }
+    public void setTaggedUsers(Set<User> taggedUsers) { this.taggedUsers = taggedUsers; }
+
+    public List<ApiDocComment> getComments() { return comments; }
+    public void setComments(List<ApiDocComment> comments) { this.comments = comments; }
 
     public Instant getCreatedAt() { return createdAt; }
     public void setCreatedAt(Instant createdAt) { this.createdAt = createdAt; }

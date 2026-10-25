@@ -20,6 +20,7 @@ import {
   ChevronDown,
   Check
 } from 'lucide-react';
+import { PageLoader, ButtonSpinner } from '../components/ui/LoadingSpinner';
 
 interface ProjectsPageProps {
   onNavigateTab: (tab: any, projectId?: number) => void;
@@ -290,8 +291,11 @@ const MultiSelectUserDropdown: React.FC<MultiSelectUserDropdownProps> = ({
 };
 
 export const ProjectsPage: React.FC<ProjectsPageProps> = ({ onNavigateTab }) => {
-  const { user } = useAuth();
+  const { user, hasPermission } = useAuth();
   const isAdmin = user?.roleName === 'ROLE_ADMIN';
+  const canCreateProject = isAdmin || hasPermission('PROJECT_CREATE');
+  const canEditProject = isAdmin || hasPermission('PROJECT_EDIT') || hasPermission('PROJECT_CREATE');
+  const canDeleteProject = isAdmin;
 
   const [projects, setProjects] = useState<Project[]>([]);
   const [users, setUsers] = useState<User[]>([]);
@@ -488,7 +492,7 @@ export const ProjectsPage: React.FC<ProjectsPageProps> = ({ onNavigateTab }) => 
           </div>
         </div>
 
-        {isAdmin && (
+        {canCreateProject && (
           <button
             onClick={openCreateModal}
             className="flex items-center gap-2 px-4 py-2.5 bg-primary hover:bg-primary-hover text-white text-xs font-bold rounded-xl shadow-xs transition-colors cursor-pointer self-start sm:self-auto"
@@ -581,7 +585,7 @@ export const ProjectsPage: React.FC<ProjectsPageProps> = ({ onNavigateTab }) => 
 
       {/* Projects List Grid */}
       {loading ? (
-        <div className="py-20 text-center text-sm text-text-secondary">Loading project masters...</div>
+        <PageLoader message="Loading project workspace masters..." />
       ) : filteredProjects.length === 0 ? (
         <div className="bg-white rounded-2xl border border-border-custom p-12 text-center shadow-xs">
           <FolderKanban className="w-12 h-12 text-primary/40 mx-auto mb-3" />
@@ -621,22 +625,26 @@ export const ProjectsPage: React.FC<ProjectsPageProps> = ({ onNavigateTab }) => 
                       </span>
                     </div>
 
-                    {isAdmin && (
+                    {(canEditProject || canDeleteProject) && (
                       <div className="flex items-center gap-1">
-                        <button
-                          onClick={() => openEditModal(project)}
-                          className="p-1 text-text-secondary hover:text-primary rounded-md hover:bg-purple-50 transition-colors"
-                          title="Edit Project"
-                        >
-                          <Edit2 className="w-3.5 h-3.5" />
-                        </button>
-                        <button
-                          onClick={() => handleDeleteProject(project.id)}
-                          className="p-1 text-text-secondary hover:text-rose-600 rounded-md hover:bg-rose-50 transition-colors"
-                          title="Delete Project"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
+                        {canEditProject && (
+                          <button
+                            onClick={() => openEditModal(project)}
+                            className="p-1 text-text-secondary hover:text-primary rounded-md hover:bg-purple-50 transition-colors"
+                            title="Edit Project"
+                          >
+                            <Edit2 className="w-3.5 h-3.5" />
+                          </button>
+                        )}
+                        {canDeleteProject && (
+                          <button
+                            onClick={() => handleDeleteProject(project.id)}
+                            className="p-1 text-text-secondary hover:text-rose-600 rounded-md hover:bg-rose-50 transition-colors"
+                            title="Delete Project"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        )}
                       </div>
                     )}
                   </div>
@@ -852,9 +860,15 @@ export const ProjectsPage: React.FC<ProjectsPageProps> = ({ onNavigateTab }) => 
                 <button
                   type="submit"
                   disabled={saving}
-                  className="px-5 py-2 bg-primary hover:bg-primary-hover text-white text-xs font-bold rounded-xl shadow-xs transition-colors cursor-pointer disabled:opacity-50"
+                  className="px-5 py-2 bg-primary hover:bg-primary-hover text-white text-xs font-bold rounded-xl shadow-xs transition-colors cursor-pointer disabled:opacity-50 flex items-center gap-2"
                 >
-                  {saving ? 'Saving...' : editingProject ? 'Update Project' : 'Create Project'}
+                  {saving ? (
+                    <ButtonSpinner text="Saving Project..." />
+                  ) : editingProject ? (
+                    'Update Project'
+                  ) : (
+                    'Create Project'
+                  )}
                 </button>
               </div>
             </form>
