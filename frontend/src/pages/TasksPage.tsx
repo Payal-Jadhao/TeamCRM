@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
-import { taskApi, timeApi, discussionApi, apiHandoffApi, aiApi, userApi, projectApi, masterApi } from '../services/api';
+import { taskApi, timeApi, discussionApi, apiHandoffApi, userApi, projectApi, masterApi } from '../services/api';
 import type {
   Task,
   ChecklistItem,
@@ -23,7 +23,6 @@ import {
   CheckSquare,
   MessageSquare,
   Calendar,
-  Sparkles,
   Link as LinkIcon,
   Filter,
   User as UserIcon,
@@ -96,8 +95,6 @@ export const TasksPage: React.FC<TasksPageProps> = ({
   const [commentBody, setCommentBody] = useState('');
   const [taskApiDocs, setTaskApiDocs] = useState<ApiDoc[]>([]);
 
-  // AI loading state
-  const [aiLoading, setAiLoading] = useState(false);
   const [statusError, setStatusError] = useState('');
 
   // Create Task Modal State
@@ -111,7 +108,6 @@ export const TasksPage: React.FC<TasksPageProps> = ({
   const [newTaskSelectedAssignees, setNewTaskSelectedAssignees] = useState<number[]>([]);
   const [newTaskDueDate, setNewTaskDueDate] = useState('');
   const [newTaskEstHours, setNewTaskEstHours] = useState('8');
-  const [newTaskChecklistEnforced, setNewTaskChecklistEnforced] = useState(true);
 
   // Toast Notification State
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
@@ -134,7 +130,6 @@ export const TasksPage: React.FC<TasksPageProps> = ({
   const [editSelectedAssignees, setEditSelectedAssignees] = useState<number[]>([]);
   const [editDueDate, setEditDueDate] = useState('');
   const [editEstHours, setEditEstHours] = useState('8');
-  const [editChecklistEnforced, setEditChecklistEnforced] = useState(true);
 
   // Permissions: Employee CANNOT edit or delete tasks
   const isAdminOrManager = user?.roleName === 'ROLE_ADMIN' || user?.roleName === 'ROLE_MANAGER';
@@ -225,7 +220,6 @@ export const TasksPage: React.FC<TasksPageProps> = ({
 
     setEditDueDate(t.dueDate || '');
     setEditEstHours(t.estimatedHours ? String(t.estimatedHours) : '8');
-    setEditChecklistEnforced(t.checklistMustBeCompleted);
     setIsEditModalOpen(true);
   };
 
@@ -259,7 +253,7 @@ export const TasksPage: React.FC<TasksPageProps> = ({
         assigneeIds: assigneeIdsParam,
         dueDate: editDueDate || undefined,
         estimatedHours: editEstHours ? Number(editEstHours) : undefined,
-        checklistMustBeCompleted: editChecklistEnforced,
+        checklistMustBeCompleted: false,
       });
       if (activeTask && activeTask.id === targetId) {
         setActiveTask(updated);
@@ -289,7 +283,7 @@ export const TasksPage: React.FC<TasksPageProps> = ({
   // 1. To Do -> In Progress & Start Timer
   const handleStartWork = async (taskId: number) => {
     try {
-      try { await timeApi.startTimer(taskId, 'Sprint execution'); } catch {}
+      try { await timeApi.startTimer(taskId, 'Sprint execution'); } catch { }
       const updated = await taskApi.updateStatus(taskId, 'IN_PROGRESS');
       setTasks((prev) => prev.map((t) => (t.id === taskId ? { ...updated, isTimerRunning: true } : t)));
       if (activeTask && activeTask.id === taskId) {
@@ -320,7 +314,7 @@ export const TasksPage: React.FC<TasksPageProps> = ({
   // 3. In Progress -> Review (Stops timer & submits for review)
   const handleSubmitForReview = async (taskId: number) => {
     try {
-      try { await timeApi.stopTimer('Submitted for review'); } catch {}
+      try { await timeApi.stopTimer('Submitted for review'); } catch { }
       const updated = await taskApi.updateStatus(taskId, 'REVIEW');
       setTasks((prev) => prev.map((t) => (t.id === taskId ? { ...updated, isTimerRunning: false } : t)));
       if (activeTask && activeTask.id === taskId) {
@@ -398,11 +392,11 @@ export const TasksPage: React.FC<TasksPageProps> = ({
   const availableTaskTypes = taskTypeMasters.length > 0
     ? taskTypeMasters.map((m) => ({ code: m.keyCode || m.name.toUpperCase(), name: m.name }))
     : [
-        { code: 'FEATURE', name: 'Feature' },
-        { code: 'BUG', name: 'Bug Fix' },
-        { code: 'QUERY', name: 'Query / Discussion' },
-        { code: 'CHORE', name: 'Chore / Maintenance' },
-      ];
+      { code: 'FEATURE', name: 'Feature' },
+      { code: 'BUG', name: 'Bug Fix' },
+      { code: 'QUERY', name: 'Query / Discussion' },
+      { code: 'CHORE', name: 'Chore / Maintenance' },
+    ];
 
 
   const loadTaskDetails = async (taskId: number) => {
@@ -496,24 +490,17 @@ export const TasksPage: React.FC<TasksPageProps> = ({
     }
   };
 
-  // Gemini AI Checklist Generation
-  const handleAiGenerateChecklist = async () => {
+  const handleDeleteChecklistItem = async (itemId: number) => {
     if (!activeTask) return;
-    setAiLoading(true);
     try {
-      const promptContent = `${activeTask.title}: ${activeTask.description || ''}`;
-      const res = await aiApi.generate('CHECKLIST', promptContent);
-      if (res.items && res.items.length > 0) {
-        for (const itemText of res.items) {
-          await taskApi.addChecklistItem(activeTask.id, itemText);
-        }
-        const updatedChk = await taskApi.getChecklist(activeTask.id);
-        setChecklist(updatedChk);
-      }
+      await taskApi.deleteChecklistItem(itemId);
+      const chk = await taskApi.getChecklist(activeTask.id);
+      setChecklist(chk);
+      const t = await taskApi.getTaskById(activeTask.id);
+      setActiveTask(t);
+      setTasks((prev) => prev.map((x) => (x.id === t.id ? t : x)));
     } catch (e) {
-      console.error('AI generation failed', e);
-    } finally {
-      setAiLoading(false);
+      console.error(e);
     }
   };
 
@@ -558,7 +545,7 @@ export const TasksPage: React.FC<TasksPageProps> = ({
         assigneeIds: assigneeIdsParam,
         dueDate: newTaskDueDate || undefined,
         estimatedHours: newTaskEstHours ? Number(newTaskEstHours) : 8,
-        checklistMustBeCompleted: newTaskChecklistEnforced,
+        checklistMustBeCompleted: false,
       });
       setTasks((prev) => [created, ...prev]);
       setIsCreateModalOpen(false);
@@ -670,11 +657,10 @@ export const TasksPage: React.FC<TasksPageProps> = ({
       {/* Floating Toast Notification */}
       {toast && (
         <div
-          className={`fixed top-5 right-5 z-50 px-4 py-3 rounded-xl shadow-lg border flex items-center gap-3 text-xs font-bold transition-all animate-bounce ${
-            toast.type === 'success'
+          className={`fixed top-5 right-5 z-50 px-4 py-3 rounded-xl shadow-lg border flex items-center gap-3 text-xs font-bold transition-all animate-bounce ${toast.type === 'success'
               ? 'bg-emerald-50 text-emerald-800 border-emerald-300'
               : 'bg-rose-50 text-rose-800 border-rose-300'
-          }`}
+            }`}
         >
           <span>{toast.type === 'success' ? '✓' : '⚠️'}</span>
           <span>{toast.message}</span>
@@ -779,22 +765,20 @@ export const TasksPage: React.FC<TasksPageProps> = ({
           <div className="flex items-center bg-purple-50 p-1 rounded-xl border border-purple-200 shadow-2xs">
             <button
               onClick={() => setViewMode('table')}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-                viewMode === 'table'
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${viewMode === 'table'
                   ? 'bg-white text-primary shadow-xs'
                   : 'text-text-secondary hover:text-text-primary'
-              }`}
+                }`}
             >
               <List className="w-3.5 h-3.5" />
               <span>Table View</span>
             </button>
             <button
               onClick={() => setViewMode('board')}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-                viewMode === 'board'
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${viewMode === 'board'
                   ? 'bg-white text-primary shadow-xs'
                   : 'text-text-secondary hover:text-text-primary'
-              }`}
+                }`}
             >
               <LayoutGrid className="w-3.5 h-3.5" />
               <span>Board View</span>
@@ -827,19 +811,17 @@ export const TasksPage: React.FC<TasksPageProps> = ({
           <button
             key={tab.key}
             onClick={() => setActiveStatusTab(tab.key as any)}
-            className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 shrink-0 cursor-pointer ${
-              activeStatusTab === tab.key
+            className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 shrink-0 cursor-pointer ${activeStatusTab === tab.key
                 ? 'bg-primary text-white shadow-2xs'
                 : 'bg-white text-text-secondary hover:text-text-primary border border-border-custom'
-            }`}
+              }`}
           >
             <span>{tab.label}</span>
             <span
-              className={`px-1.5 py-0.5 rounded-full text-[10px] font-bold ${
-                activeStatusTab === tab.key
+              className={`px-1.5 py-0.5 rounded-full text-[10px] font-bold ${activeStatusTab === tab.key
                   ? 'bg-white/20 text-white'
                   : 'bg-purple-100 text-primary'
-              }`}
+                }`}
             >
               {tab.count}
             </span>
@@ -910,9 +892,8 @@ export const TasksPage: React.FC<TasksPageProps> = ({
                     <tr
                       key={task.id}
                       onClick={() => loadTaskDetails(task.id)}
-                      className={`hover:bg-purple-50/40 transition-colors cursor-pointer group ${
-                        task.isTimerRunning ? 'bg-purple-50/20' : ''
-                      }`}
+                      className={`hover:bg-purple-50/40 transition-colors cursor-pointer group ${task.isTimerRunning ? 'bg-purple-50/20' : ''
+                        }`}
                     >
                       {/* Task Details */}
                       <td className="py-3.5 px-4">
@@ -1167,9 +1148,8 @@ export const TasksPage: React.FC<TasksPageProps> = ({
                       <div
                         key={task.id}
                         onClick={() => loadTaskDetails(task.id)}
-                        className={`bg-white p-3.5 rounded-xl border border-border-custom shadow-xs hover:shadow-soft transition-all cursor-pointer group ${
-                          task.isTimerRunning ? 'ring-2 ring-primary/40 bg-purple-50/20' : ''
-                        }`}
+                        className={`bg-white p-3.5 rounded-xl border border-border-custom shadow-xs hover:shadow-soft transition-all cursor-pointer group ${task.isTimerRunning ? 'ring-2 ring-primary/40 bg-purple-50/20' : ''
+                          }`}
                       >
                         {/* Top Badges */}
                         <div className="flex items-center justify-between mb-2">
@@ -1230,11 +1210,10 @@ export const TasksPage: React.FC<TasksPageProps> = ({
                           <div className="flex items-center gap-3">
                             {task.checklistTotal > 0 && (
                               <span
-                                className={`flex items-center gap-1 ${
-                                  task.checklistCompleted === task.checklistTotal
+                                className={`flex items-center gap-1 ${task.checklistCompleted === task.checklistTotal
                                     ? 'text-emerald-600 font-semibold'
                                     : ''
-                                }`}
+                                  }`}
                               >
                                 <CheckSquare className="w-3.5 h-3.5" />
                                 {task.checklistCompleted}/{task.checklistTotal}
@@ -1451,11 +1430,10 @@ export const TasksPage: React.FC<TasksPageProps> = ({
             <div className="border-b border-border-custom flex gap-4 text-xs font-bold">
               <button
                 onClick={() => setDrawerTab('timetrack')}
-                className={`pb-2 transition-colors border-b-2 flex items-center gap-1.5 ${
-                  drawerTab === 'timetrack'
+                className={`pb-2 transition-colors border-b-2 flex items-center gap-1.5 ${drawerTab === 'timetrack'
                     ? 'border-primary text-primary'
                     : 'border-transparent text-text-secondary hover:text-text-primary'
-                }`}
+                  }`}
               >
                 <Clock className="w-3.5 h-3.5" />
                 <span>Time Tracking ({((activeTask.totalLoggedSeconds || 0) / 3600).toFixed(1)}h)</span>
@@ -1463,17 +1441,16 @@ export const TasksPage: React.FC<TasksPageProps> = ({
 
               <button
                 onClick={() => setDrawerTab('checklist')}
-                className={`pb-2 transition-colors border-b-2 flex items-center gap-1.5 ${
-                  drawerTab === 'checklist'
+                className={`pb-2 transition-colors border-b-2 flex items-center gap-1.5 ${drawerTab === 'checklist'
                     ? 'border-primary text-primary'
                     : 'border-transparent text-text-secondary hover:text-text-primary'
-                }`}
+                  }`}
               >
                 <CheckSquare className="w-3.5 h-3.5" />
                 <span>Checklist ({checklist.filter((c) => c.isDone).length}/{checklist.length})</span>
               </button>
 
-              <button
+              {/* <button
                 onClick={() => setDrawerTab('discussions')}
                 className={`pb-2 transition-colors border-b-2 flex items-center gap-1.5 ${
                   drawerTab === 'discussions'
@@ -1483,15 +1460,14 @@ export const TasksPage: React.FC<TasksPageProps> = ({
               >
                 <MessageSquare className="w-3.5 h-3.5" />
                 <span>Discussion ({comments.length})</span>
-              </button>
+              </button> */}
 
               <button
                 onClick={() => setDrawerTab('api')}
-                className={`pb-2 transition-colors border-b-2 flex items-center gap-1.5 ${
-                  drawerTab === 'api'
+                className={`pb-2 transition-colors border-b-2 flex items-center gap-1.5 ${drawerTab === 'api'
                     ? 'border-primary text-primary'
                     : 'border-transparent text-text-secondary hover:text-text-primary'
-                }`}
+                  }`}
               >
                 <Code className="w-3.5 h-3.5" />
                 <span>API Contract ({taskApiDocs.length})</span>
@@ -1569,72 +1545,29 @@ export const TasksPage: React.FC<TasksPageProps> = ({
             {/* TAB CONTENT 2: CHECKLIST */}
             {drawerTab === 'checklist' && (
               <div className="space-y-4">
-                {/* Progress bar */}
+                {/* Header & Progress bar */}
                 <div>
-                  <div className="flex justify-between text-xs font-bold text-text-secondary mb-1">
-                    <span>Progress:</span>
-                    <span className="text-primary">
+                  <div className="flex items-center justify-between text-xs font-bold text-text-primary mb-1">
+                    <span>Manual Checklist (Optional)</span>
+                    <span className="text-primary font-mono text-[11px]">
+                      {checklist.filter((c) => c.isDone).length}/{checklist.length} completed (
                       {checklist.length > 0
                         ? Math.round((checklist.filter((c) => c.isDone).length / checklist.length) * 100)
                         : 0}
-                      %
+                      %)
                     </span>
                   </div>
-                  <div className="w-full h-2.5 bg-purple-50 rounded-full overflow-hidden">
+                  <div className="w-full h-2 bg-purple-50 rounded-full overflow-hidden">
                     <div
                       className="h-full bg-gradient-to-r from-primary to-accent-pink rounded-full transition-all duration-300"
                       style={{
-                        width: `${
-                          checklist.length > 0
+                        width: `${checklist.length > 0
                             ? (checklist.filter((c) => c.isDone).length / checklist.length) * 100
                             : 0
-                        }%`,
+                          }%`,
                       }}
                     />
                   </div>
-                </div>
-
-                {/* Gemini AI Trigger Button */}
-                <button
-                  type="button"
-                  onClick={handleAiGenerateChecklist}
-                  disabled={aiLoading}
-                  className="w-full py-2 bg-purple-50 hover:bg-purple-100 text-primary border border-purple-200 rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition-colors disabled:opacity-50"
-                >
-                  <Sparkles className="w-4 h-4 text-accent-pink" />
-                  <span>{aiLoading ? 'Gemini AI generating subtasks...' : 'Auto-Generate Checklist with Gemini AI'}</span>
-                </button>
-
-                {/* Checklist Items */}
-                <div className="space-y-2">
-                  {checklist.map((item) => (
-                    <div
-                      key={item.id}
-                      onClick={() => handleToggleChecklist(item.id)}
-                      className="flex items-center gap-3 p-2.5 bg-white border border-border-custom hover:bg-purple-50/40 rounded-xl cursor-pointer transition-colors"
-                    >
-                      <input
-                        type="checkbox"
-                        checked={item.isDone}
-                        onChange={() => {}}
-                        className="w-4 h-4 text-primary rounded accent-primary cursor-pointer"
-                      />
-                      <span
-                        className={`text-xs flex-1 ${
-                          item.isDone
-                            ? 'line-through text-text-secondary'
-                            : 'text-text-primary font-medium'
-                        }`}
-                      >
-                        {item.text}
-                      </span>
-                      {item.doneByName && (
-                        <span className="text-[10px] text-text-secondary bg-purple-50 px-2 py-0.5 rounded-full">
-                          ✓ {item.doneByName}
-                        </span>
-                      )}
-                    </div>
-                  ))}
                 </div>
 
                 {/* Add Item Input */}
@@ -1643,16 +1576,62 @@ export const TasksPage: React.FC<TasksPageProps> = ({
                     type="text"
                     value={newChecklistText}
                     onChange={(e) => setNewChecklistText(e.target.value)}
-                    placeholder="Add a checklist item..."
+                    placeholder="Add an optional checklist item manually (e.g. Verify edge cases)..."
                     className="flex-1 px-3 py-2 text-xs bg-purple-50 rounded-xl border border-border-custom focus:border-primary outline-none"
                   />
                   <button
                     type="submit"
-                    className="px-3 py-2 bg-primary text-white text-xs font-bold rounded-xl"
+                    disabled={!newChecklistText.trim()}
+                    className="px-4 py-2 bg-primary hover:bg-primary-hover text-white text-xs font-bold rounded-xl shadow-xs transition-colors disabled:opacity-50 cursor-pointer shrink-0"
                   >
-                    Add
+                    Add Item
                   </button>
                 </form>
+
+                {/* Checklist Items */}
+                <div className="space-y-2">
+                  {checklist.length === 0 ? (
+                    <div className="p-6 text-center text-xs text-text-secondary bg-purple-50/40 rounded-xl border border-dashed border-purple-200">
+                      No checklist items added yet. Checklists are optional and can be added manually above.
+                    </div>
+                  ) : (
+                    checklist.map((item) => (
+                      <div
+                        key={item.id}
+                        className="flex items-center gap-3 p-2.5 bg-white border border-border-custom hover:bg-purple-50/40 rounded-xl transition-colors"
+                      >
+                        <input
+                          type="checkbox"
+                          checked={item.isDone}
+                          onChange={() => handleToggleChecklist(item.id)}
+                          className="w-4 h-4 text-primary rounded accent-primary cursor-pointer"
+                        />
+                        <span
+                          onClick={() => handleToggleChecklist(item.id)}
+                          className={`text-xs flex-1 cursor-pointer select-none ${item.isDone
+                              ? 'line-through text-text-secondary'
+                              : 'text-text-primary font-medium'
+                            }`}
+                        >
+                          {item.text}
+                        </span>
+                        {item.doneByName && (
+                          <span className="text-[10px] text-text-secondary bg-purple-50 px-2 py-0.5 rounded-full shrink-0">
+                            ✓ {item.doneByName}
+                          </span>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteChecklistItem(item.id)}
+                          className="p-1 text-gray-400 hover:text-rose-600 rounded transition-colors cursor-pointer shrink-0"
+                          title="Delete checklist item"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    ))
+                  )}
+                </div>
               </div>
             )}
 
@@ -1669,13 +1648,12 @@ export const TasksPage: React.FC<TasksPageProps> = ({
                     comments.map((comm) => (
                       <div
                         key={comm.id}
-                        className={`p-3 rounded-xl border ${
-                          comm.type === 'QUERY'
+                        className={`p-3 rounded-xl border ${comm.type === 'QUERY'
                             ? 'bg-amber-50/40 border-amber-200'
                             : comm.type === 'BLOCKER'
-                            ? 'bg-rose-50/40 border-rose-200'
-                            : 'bg-white border-border-custom'
-                        }`}
+                              ? 'bg-rose-50/40 border-rose-200'
+                              : 'bg-white border-border-custom'
+                          }`}
                       >
                         <div className="flex items-center justify-between mb-1.5">
                           <div className="flex items-center gap-2">
@@ -1719,27 +1697,24 @@ export const TasksPage: React.FC<TasksPageProps> = ({
                     <button
                       type="button"
                       onClick={() => setCommentType('GENERAL')}
-                      className={`px-2.5 py-1 rounded-lg text-xs font-semibold ${
-                        commentType === 'GENERAL' ? 'bg-primary text-white' : 'bg-gray-100 text-gray-700'
-                      }`}
+                      className={`px-2.5 py-1 rounded-lg text-xs font-semibold ${commentType === 'GENERAL' ? 'bg-primary text-white' : 'bg-gray-100 text-gray-700'
+                        }`}
                     >
                       General
                     </button>
                     <button
                       type="button"
                       onClick={() => setCommentType('QUERY')}
-                      className={`px-2.5 py-1 rounded-lg text-xs font-semibold ${
-                        commentType === 'QUERY' ? 'bg-amber-500 text-white' : 'bg-gray-100 text-gray-700'
-                      }`}
+                      className={`px-2.5 py-1 rounded-lg text-xs font-semibold ${commentType === 'QUERY' ? 'bg-amber-500 text-white' : 'bg-gray-100 text-gray-700'
+                        }`}
                     >
                       Query
                     </button>
                     <button
                       type="button"
                       onClick={() => setCommentType('BLOCKER')}
-                      className={`px-2.5 py-1 rounded-lg text-xs font-semibold ${
-                        commentType === 'BLOCKER' ? 'bg-rose-500 text-white' : 'bg-gray-100 text-gray-700'
-                      }`}
+                      className={`px-2.5 py-1 rounded-lg text-xs font-semibold ${commentType === 'BLOCKER' ? 'bg-rose-500 text-white' : 'bg-gray-100 text-gray-700'
+                        }`}
                     >
                       Blocker
                     </button>
@@ -1935,9 +1910,8 @@ export const TasksPage: React.FC<TasksPageProps> = ({
                     return (
                       <label
                         key={u.id}
-                        className={`flex items-center justify-between px-2.5 py-1.5 rounded-md cursor-pointer transition-colors text-xs ${
-                          isSelected ? 'bg-purple-100/70 text-primary font-bold' : 'hover:bg-purple-50 text-text-primary'
-                        }`}
+                        className={`flex items-center justify-between px-2.5 py-1.5 rounded-md cursor-pointer transition-colors text-xs ${isSelected ? 'bg-purple-100/70 text-primary font-bold' : 'hover:bg-purple-50 text-text-primary'
+                          }`}
                       >
                         <div className="flex items-center gap-2">
                           <input
@@ -2009,18 +1983,7 @@ export const TasksPage: React.FC<TasksPageProps> = ({
             </div>
           </div>
 
-          <div className="flex items-center gap-2 pt-2">
-            <input
-              type="checkbox"
-              id="enforceChecklist"
-              checked={newTaskChecklistEnforced}
-              onChange={(e) => setNewTaskChecklistEnforced(e.target.checked)}
-              className="w-4 h-4 text-primary rounded accent-primary cursor-pointer"
-            />
-            <label htmlFor="enforceChecklist" className="text-xs text-text-primary font-medium cursor-pointer">
-              Enforce completion rule: Task cannot be moved to DONE if checklist is pending
-            </label>
-          </div>
+
 
           <button
             type="submit"
@@ -2144,9 +2107,8 @@ export const TasksPage: React.FC<TasksPageProps> = ({
                     return (
                       <label
                         key={u.id}
-                        className={`flex items-center justify-between px-2.5 py-1.5 rounded-md cursor-pointer transition-colors text-xs ${
-                          isSelected ? 'bg-purple-100/70 text-primary font-bold' : 'hover:bg-purple-50 text-text-primary'
-                        }`}
+                        className={`flex items-center justify-between px-2.5 py-1.5 rounded-md cursor-pointer transition-colors text-xs ${isSelected ? 'bg-purple-100/70 text-primary font-bold' : 'hover:bg-purple-50 text-text-primary'
+                          }`}
                       >
                         <div className="flex items-center gap-2">
                           <input
@@ -2218,28 +2180,7 @@ export const TasksPage: React.FC<TasksPageProps> = ({
             </div>
           </div>
 
-          <div>
-            <label className="block text-xs font-semibold text-text-primary mb-1">Due Date</label>
-            <input
-              type="date"
-              value={editDueDate}
-              onChange={(e) => setEditDueDate(e.target.value)}
-              className="w-full px-3 py-2 bg-purple-50 text-xs text-text-primary rounded-lg border border-border-custom focus:border-primary outline-none"
-            />
-          </div>
 
-          <div className="flex items-center gap-2 pt-2">
-            <input
-              type="checkbox"
-              id="editEnforceChecklist"
-              checked={editChecklistEnforced}
-              onChange={(e) => setEditChecklistEnforced(e.target.checked)}
-              className="w-4 h-4 text-primary rounded accent-primary cursor-pointer"
-            />
-            <label htmlFor="editEnforceChecklist" className="text-xs text-text-primary font-medium cursor-pointer">
-              Enforce checklist completion before DONE
-            </label>
-          </div>
 
           <button
             type="submit"

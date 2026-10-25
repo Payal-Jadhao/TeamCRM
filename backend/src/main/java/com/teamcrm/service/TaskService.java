@@ -137,7 +137,7 @@ public class TaskService {
         task.setDueDate(request.dueDate());
         task.setEstimatedHours(request.estimatedHours());
         task.setLabels(request.labels());
-        task.setChecklistMustBeCompleted(request.checklistMustBeCompleted() == null || request.checklistMustBeCompleted());
+        task.setChecklistMustBeCompleted(Boolean.TRUE.equals(request.checklistMustBeCompleted()));
 
         if (reporterId != null) {
             userRepository.findById(reporterId).ifPresent(task::setReporter);

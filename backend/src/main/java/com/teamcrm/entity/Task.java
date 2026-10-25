@@ -69,7 +69,7 @@ public class Task {
     private Deal linkedDeal;
 
     @Column(nullable = false)
-    private Boolean checklistMustBeCompleted = true;
+    private Boolean checklistMustBeCompleted = false;
 
     private Instant createdAt = Instant.now();
     private Instant updatedAt = Instant.now();

@@ -287,9 +287,8 @@ export const MeetingsPage: React.FC<MeetingsPageProps> = ({
                   setActiveMeeting(m);
                   setMeetingNotes(m.notes || '');
                 }}
-                className={`p-5 bg-white rounded-2xl border border-border-custom shadow-xs hover:shadow-soft transition-all cursor-pointer ${
-                  activeMeeting?.id === m.id ? 'ring-2 ring-primary/40' : ''
-                }`}
+                className={`p-5 bg-white rounded-2xl border border-border-custom shadow-xs hover:shadow-soft transition-all cursor-pointer ${activeMeeting?.id === m.id ? 'ring-2 ring-primary/40' : ''
+                  }`}
               >
                 <div className="flex items-center justify-between mb-2">
                   <span className="font-bold text-sm text-text-primary">{m.title}</span>
@@ -431,7 +430,7 @@ export const MeetingsPage: React.FC<MeetingsPageProps> = ({
                 Save Notes
               </button>
 
-              <div className="pt-3 border-t border-border-custom">
+              {/* <div className="pt-3 border-t border-border-custom">
                 <span className="font-bold text-text-secondary uppercase block mb-2">
                   Action Items (Convert to Task)
                 </span>
@@ -466,7 +465,7 @@ export const MeetingsPage: React.FC<MeetingsPageProps> = ({
                     </button>
                   </div>
                 </div>
-              </div>
+              </div> */}
             </div>
           ) : (
             <div className="py-12 text-center text-xs text-text-secondary">
