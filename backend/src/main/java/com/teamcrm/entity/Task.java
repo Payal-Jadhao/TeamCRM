@@ -72,6 +72,8 @@ public class Task {
     private Boolean checklistMustBeCompleted = false;
 
     private Instant createdAt = Instant.now();
+    private Instant assignedAt = Instant.now();
+    private Instant firstStartedAt;
     private Instant updatedAt = Instant.now();
     private Boolean isDeleted = false;
 
@@ -139,6 +141,12 @@ public class Task {
 
     public Instant getCreatedAt() { return createdAt; }
     public void setCreatedAt(Instant createdAt) { this.createdAt = createdAt; }
+
+    public Instant getAssignedAt() { return assignedAt; }
+    public void setAssignedAt(Instant assignedAt) { this.assignedAt = assignedAt; }
+
+    public Instant getFirstStartedAt() { return firstStartedAt; }
+    public void setFirstStartedAt(Instant firstStartedAt) { this.firstStartedAt = firstStartedAt; }
 
     public Instant getUpdatedAt() { return updatedAt; }
     public void setUpdatedAt(Instant updatedAt) { this.updatedAt = updatedAt; }

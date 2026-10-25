@@ -61,7 +61,9 @@ export const INITIAL_USERS: User[] = [
     isActive: true,
     isFirstLogin: false,
     permissions: [
-      'ROLE_EMPLOYEE'
+      'TIME_TRACK', 'TIME_EDIT_MANUAL',
+      'DISCUSSION_POST', 'DISCUSSION_MENTION_ALL', 'DISCUSSION_MODERATE',
+      'API_DOC_PUBLISH', 'API_DOC_REVIEW'
     ]
   }
 ];
@@ -123,11 +125,11 @@ const ALL_PERMISSIONS = [
   { id: 12, code: 'TIME_TRACK', module: 'TIME', description: 'Start and stop server time tracking' },
   { id: 13, code: 'TIME_EDIT_MANUAL', module: 'TIME', description: 'Submit manual time entries' },
   { id: 14, code: 'CHECKLIST_MANAGE', module: 'TASK', description: 'Manage task checklist items' },
-  { id: 15, code: 'DISCUSSION_POST', module: 'DISCUSSION', description: 'Post discussions and query blockers' },
-  { id: 16, code: 'DISCUSSION_MENTION_ALL', module: 'DISCUSSION', description: 'Tag entire team channels' },
-  { id: 17, code: 'DISCUSSION_MODERATE', module: 'DISCUSSION', description: 'Resolve and moderate blocker queries' },
-  { id: 18, code: 'API_DOC_PUBLISH', module: 'API', description: 'Publish OpenAPI documentation handoffs' },
-  { id: 19, code: 'API_DOC_REVIEW', module: 'API', description: 'Review and approve backend API contracts' },
+  { id: 15, code: 'DISCUSSION_POST', module: 'DISCUSSIONS', description: 'Post messages and queries in task discussions' },
+  { id: 16, code: 'DISCUSSION_MENTION_ALL', module: 'DISCUSSIONS', description: 'Use @everyone mention in task discussions' },
+  { id: 17, code: 'DISCUSSION_MODERATE', module: 'DISCUSSIONS', description: 'Moderate or remove task discussion messages' },
+  { id: 18, code: 'API_DOC_PUBLISH', module: 'API_HANDOFF', description: 'Publish and update backend-to-frontend API specifications' },
+  { id: 19, code: 'API_DOC_REVIEW', module: 'API_HANDOFF', description: 'Change API status and request modifications' },
   { id: 20, code: 'MEETING_SCHEDULE', module: 'MEETING', description: 'Schedule team standups and syncs' },
   { id: 21, code: 'MEETING_EDIT_NOTES', module: 'MEETING', description: 'Record meeting action items and minutes' },
   { id: 22, code: 'LEAD_VIEW_ALL', module: 'CRM', description: 'View full sales pipeline leads' },
@@ -157,7 +159,10 @@ const INITIAL_TASKS: Task[] = [
     totalLoggedSeconds: 14400,
     checklistTotal: 2,
     checklistCompleted: 2,
-    isTimerRunning: false
+    isTimerRunning: false,
+    createdAt: '2026-10-18T09:00:00Z',
+    assignedAt: '2026-10-18T09:00:00Z',
+    firstStartedAt: '2026-10-18T09:03:00Z'
   },
   {
     id: 102,
@@ -178,7 +183,10 @@ const INITIAL_TASKS: Task[] = [
     totalLoggedSeconds: 7200,
     checklistTotal: 3,
     checklistCompleted: 1,
-    isTimerRunning: true
+    isTimerRunning: true,
+    createdAt: '2026-10-19T10:00:00Z',
+    assignedAt: '2026-10-19T10:00:00Z',
+    firstStartedAt: '2026-10-19T10:03:00Z'
   },
   {
     id: 103,
@@ -199,7 +207,10 @@ const INITIAL_TASKS: Task[] = [
     totalLoggedSeconds: 3600,
     checklistTotal: 1,
     checklistCompleted: 0,
-    isTimerRunning: false
+    isTimerRunning: false,
+    createdAt: '2026-10-21T11:00:00Z',
+    assignedAt: '2026-10-21T11:00:00Z',
+    firstStartedAt: '2026-10-21T11:15:00Z'
   },
   {
     id: 104,
@@ -220,7 +231,9 @@ const INITIAL_TASKS: Task[] = [
     totalLoggedSeconds: 0,
     checklistTotal: 0,
     checklistCompleted: 0,
-    isTimerRunning: false
+    isTimerRunning: false,
+    createdAt: '2026-10-25T14:00:00Z',
+    assignedAt: '2026-10-25T14:00:00Z'
   }
 ];
 
@@ -400,7 +413,7 @@ export const mockStore = {
         'ROLE_MANAGER', 'PROJECT_CREATE', 'PROJECT_EDIT', 'TASK_CREATE', 'TASK_ASSIGN', 'TASK_EDIT',
         'TASK_DELETE', 'TIME_TRACK', 'TIME_EDIT_MANUAL', 'CHECKLIST_MANAGE', 'DISCUSSION_POST',
         'API_DOC_REVIEW', 'MEETING_SCHEDULE', 'MEETING_EDIT_NOTES', 'LEAD_VIEW_ALL', 'LEAD_MANAGE', 'DEAL_MANAGE', 'REPORT_VIEW'
-      ] : [safeRole])
+      ] : ['API_DOC_REVIEW'])
     };
     (newUser as any).role = safeRole;
     users.push(newUser);
@@ -529,7 +542,9 @@ export const mockStore = {
       totalLoggedSeconds: 0,
       checklistTotal: 0,
       checklistCompleted: 0,
-      isTimerRunning: false
+      isTimerRunning: false,
+      createdAt: new Date().toISOString(),
+      assignedAt: new Date().toISOString()
     };
     tasks.unshift(newTask);
     setStored('teamcrm_store_tasks', tasks);
@@ -612,43 +627,91 @@ export const mockStore = {
     setStored('teamcrm_store_checklists', all);
   },
 
-  getActiveTimer: (): RunningTimer | null => {
+  getActiveTimer: (taskId?: number): RunningTimer | null => {
+    const map = getStored<Record<number, RunningTimer>>('teamcrm_store_active_timers_map', {});
+    if (taskId) {
+      return map[taskId] || null;
+    }
+    const keys = Object.keys(map);
+    if (keys.length > 0) {
+      return map[Number(keys[keys.length - 1])];
+    }
     return getStored<RunningTimer | null>('teamcrm_store_active_timer', null);
   },
 
+  getAllActiveTimers: (): RunningTimer[] => {
+    const map = getStored<Record<number, RunningTimer>>('teamcrm_store_active_timers_map', {});
+    return Object.values(map);
+  },
+
   startTimer: (taskId: number, note?: string): RunningTimer => {
+    const map = getStored<Record<number, RunningTimer>>('teamcrm_store_active_timers_map', {});
+    const existing = map[taskId];
+    if (existing) {
+      return existing;
+    }
+
+    // Check past logs for this task to get previously accumulated time
+    const logs = mockStore.getMyLogs().filter((l) => l.taskId === taskId && l.source === 'TIMER');
+    const accumulatedSeconds = logs.reduce((sum, l) => sum + (l.durationSeconds || 0), 0);
+
     const timer: RunningTimer = {
       logId: Date.now(),
       taskId,
       taskCode: 'CRM-' + taskId,
       taskTitle: 'Active Sprint Item',
       startTime: new Date().toISOString(),
-      elapsedSeconds: 0,
+      elapsedSeconds: accumulatedSeconds,
+      accumulatedSeconds,
       note: note || ''
     };
+
+    map[taskId] = timer;
+    setStored('teamcrm_store_active_timers_map', map);
     setStored('teamcrm_store_active_timer', timer);
     return timer;
   },
 
-  stopTimer: (note?: string): TimeLog => {
-    const active = mockStore.getActiveTimer();
-    const duration = active ? Math.max(60, Math.floor((Date.now() - new Date(active.startTime).getTime()) / 1000)) : 1800;
+  stopTimer: (taskId?: number, note?: string): TimeLog => {
+    const map = getStored<Record<number, RunningTimer>>('teamcrm_store_active_timers_map', {});
+    let targetTask = taskId ? map[taskId] : null;
+    if (!targetTask) {
+      const keys = Object.keys(map);
+      if (keys.length > 0) {
+        targetTask = map[Number(keys[keys.length - 1])];
+      }
+    }
+    if (!targetTask) {
+      targetTask = getStored<RunningTimer | null>('teamcrm_store_active_timer', null);
+    }
+
+    const startMs = targetTask ? new Date(targetTask.startTime).getTime() : Date.now();
+    const sessionSec = Math.max(1, Math.floor((Date.now() - startMs) / 1000));
+    const accumulated = targetTask?.accumulatedSeconds || 0;
+    const totalDuration = accumulated + sessionSec;
+
     const log: TimeLog = {
       id: Date.now(),
-      taskId: active?.taskId || 101,
-      taskCode: active?.taskCode || 'CRM-101',
-      taskTitle: active?.taskTitle || 'Sprint Item',
+      taskId: targetTask?.taskId || taskId || 101,
+      taskCode: targetTask?.taskCode || ('CRM-' + (targetTask?.taskId || taskId || 101)),
+      taskTitle: targetTask?.taskTitle || 'Sprint Item',
       userId: 1,
       userName: 'Payal Jadhao',
-      durationSeconds: duration,
-      startTime: active?.startTime || new Date(Date.now() - duration * 1000).toISOString(),
+      durationSeconds: totalDuration,
+      startTime: targetTask?.startTime || new Date().toISOString(),
       endTime: new Date().toISOString(),
       source: 'TIMER',
-      note: note || active?.note || 'Sprint execution'
+      note: note || targetTask?.note || 'Sprint execution'
     };
+
     const logs = mockStore.getMyLogs();
     logs.unshift(log);
     setStored('teamcrm_store_time_logs', logs);
+
+    if (targetTask?.taskId) {
+      delete map[targetTask.taskId];
+      setStored('teamcrm_store_active_timers_map', map);
+    }
     setStored('teamcrm_store_active_timer', null);
     return log;
   },

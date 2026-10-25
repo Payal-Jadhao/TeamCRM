@@ -55,6 +55,17 @@ public class ApiHandoffController {
         return ResponseEntity.ok(apiHandoffService.updateApiDoc(id, request, currentUser.getId(), isAdmin));
     }
 
+    @DeleteMapping("/{id}")
+    @PreAuthorize("hasAuthority('API_DOC_PUBLISH') or hasRole('ADMIN') or hasRole('MANAGER') or hasRole('EMPLOYEE')")
+    public ResponseEntity<Void> deleteApiDoc(
+            @PathVariable Long id,
+            @AuthenticationPrincipal UserDetailsImpl currentUser) {
+        boolean isAdmin = currentUser.getAuthorities().stream()
+                .anyMatch(a -> a.getAuthority().equals("ROLE_ADMIN"));
+        apiHandoffService.deleteApiDoc(id, currentUser.getId(), isAdmin);
+        return ResponseEntity.noContent().build();
+    }
+
     @PatchMapping("/{id}/status")
     public ResponseEntity<ApiDocResponseDto> updateStatus(
             @PathVariable Long id,

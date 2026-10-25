@@ -10,8 +10,13 @@ public class TimeTrackingDtos {
     ) {}
 
     public record StopTimerRequest(
+            Long taskId,
             String note
-    ) {}
+    ) {
+        public StopTimerRequest(String note) {
+            this(null, note);
+        }
+    }
 
     public record ManualTimeLogRequest(
             Long taskId,
@@ -43,8 +48,13 @@ public class TimeTrackingDtos {
             String taskTitle,
             Instant startTime,
             Long elapsedSeconds,
-            String note
-    ) {}
+            String note,
+            Long accumulatedSeconds
+    ) {
+        public RunningTimerDto(Long logId, Long taskId, String taskCode, String taskTitle, Instant startTime, Long elapsedSeconds, String note) {
+            this(logId, taskId, taskCode, taskTitle, startTime, elapsedSeconds, note, 0L);
+        }
+    }
 
     public record TaskTimeSummaryDto(
             Long taskId,

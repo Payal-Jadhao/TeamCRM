@@ -38,9 +38,11 @@ public class TimeTrackingService {
     }
 
     /**
-     * Start a new timer for the given user on the specified task.
-     * Business Rule: A user can have only ONE active timer. If an existing timer is active,
-     * it is automatically paused/stopped before starting the new one.
+     * Start or resume a timer for the given user on the specified task.
+     * Business Rule: Timers are tracked independently per task.
+     * When a timer for a specific task is paused and resumed, it appends to that
+     * task's existing accumulated time instead of creating a brand new disconnected timer.
+     * Other tasks maintain their own separate timers based on server-side time.
      */
     @Transactional
     public RunningTimerDto startTimer(Long taskId, Long userId, String note) {
@@ -50,33 +52,70 @@ public class TimeTrackingService {
         Task task = taskRepository.findById(taskId)
                 .orElseThrow(() -> new RuntimeException("Task not found"));
 
-        // 1. Auto-pause existing active timer if any
-        Optional<TaskTimeLog> activeLogOpt = timeLogRepository.findActiveLogByUserId(userId);
-        if (activeLogOpt.isPresent()) {
-            TaskTimeLog existingLog = activeLogOpt.get();
-            Instant now = Instant.now();
-            existingLog.setEndTime(now);
-            long seconds = Duration.between(existingLog.getStartTime(), now).getSeconds();
-            existingLog.setDurationSeconds(Math.max(seconds, 1L));
-            existingLog.setNote((existingLog.getNote() != null ? existingLog.getNote() + " | " : "") + "Auto-paused by starting new timer");
-            timeLogRepository.save(existingLog);
+        // Check if an active timer is already running for this user on this task
+        Optional<TaskTimeLog> runningOpt = timeLogRepository.findActiveLogByUserIdAndTaskId(userId, taskId);
+        if (runningOpt.isPresent()) {
+            TaskTimeLog log = runningOpt.get();
+            long sessionElapsed = Math.max(0L, Duration.between(log.getStartTime(), Instant.now()).getSeconds());
+            long accumulated = log.getDurationSeconds() != null ? log.getDurationSeconds() : 0L;
+            return new RunningTimerDto(
+                    log.getId(),
+                    task.getId(),
+                    task.getTaskCode(),
+                    task.getTitle(),
+                    log.getStartTime(),
+                    accumulated + sessionElapsed,
+                    log.getNote(),
+                    accumulated
+            );
         }
 
-        // 2. Start new timer session
-        Instant startTime = Instant.now();
-        TaskTimeLog newLog = new TaskTimeLog();
-        newLog.setTask(task);
-        newLog.setUser(user);
-        newLog.setStartTime(startTime);
-        newLog.setDurationSeconds(0L);
-        newLog.setSource("TIMER");
-        newLog.setNote(note);
-        TaskTimeLog saved = timeLogRepository.save(newLog);
+        // Check if there is an existing (paused) TIMER log for this task and user to resume
+        Optional<TaskTimeLog> existingPausedLog = timeLogRepository
+                .findFirstByTaskIdAndUserIdAndSourceOrderByUpdatedAtDesc(taskId, userId, "TIMER");
 
-        // 3. Move task status to IN_PROGRESS if currently TODO
+        Instant now = Instant.now();
+        TaskTimeLog logToSave;
+        long accumulatedSeconds = 0L;
+
+        if (existingPausedLog.isPresent()) {
+            // Resume existing timer: preserve existing durationSeconds as base accumulated time
+            logToSave = existingPausedLog.get();
+            accumulatedSeconds = logToSave.getDurationSeconds() != null ? logToSave.getDurationSeconds() : 0L;
+            logToSave.setStartTime(now);
+            logToSave.setEndTime(null);
+            if (note != null && !note.isBlank()) {
+                logToSave.setNote(note);
+            }
+            logToSave.setUpdatedAt(now);
+        } else {
+            // First time timer on this task for this user
+            logToSave = new TaskTimeLog();
+            logToSave.setTask(task);
+            logToSave.setUser(user);
+            logToSave.setStartTime(now);
+            logToSave.setDurationSeconds(0L);
+            logToSave.setSource("TIMER");
+            logToSave.setNote(note);
+        }
+
+        TaskTimeLog saved = timeLogRepository.save(logToSave);
+
+        // Record firstStartedAt if not yet set
+        boolean taskChanged = false;
+        if (task.getFirstStartedAt() == null) {
+            task.setFirstStartedAt(now);
+            taskChanged = true;
+        }
+
+        // Move task status to IN_PROGRESS if currently TODO
         if ("TODO".equalsIgnoreCase(task.getStatus())) {
             task.setStatus("IN_PROGRESS");
-            task.setUpdatedAt(Instant.now());
+            taskChanged = true;
+        }
+
+        if (taskChanged) {
+            task.setUpdatedAt(now);
             taskRepository.save(task);
         }
 
@@ -86,23 +125,36 @@ public class TimeTrackingService {
                 task.getTaskCode(),
                 task.getTitle(),
                 saved.getStartTime(),
-                0L,
-                saved.getNote()
+                accumulatedSeconds,
+                saved.getNote(),
+                accumulatedSeconds
         );
     }
 
     /**
-     * Pause / Stop active timer for the user.
+     * Pause / Stop active timer for a specific task (or latest active timer if taskId is null).
+     * Appends the elapsed session time to existing accumulated durationSeconds.
      */
     @Transactional
-    public TimeLogResponseDto stopTimer(Long userId, String note) {
-        TaskTimeLog activeLog = timeLogRepository.findActiveLogByUserId(userId)
-                .orElseThrow(() -> new IllegalStateException("No active timer found to pause/stop"));
+    public TimeLogResponseDto stopTimer(Long userId, Long taskId, String note) {
+        Optional<TaskTimeLog> activeLogOpt;
+        if (taskId != null) {
+            activeLogOpt = timeLogRepository.findActiveLogByUserIdAndTaskId(userId, taskId);
+        } else {
+            List<TaskTimeLog> activeList = timeLogRepository.findActiveLogsByUserId(userId);
+            activeLogOpt = activeList.isEmpty() ? Optional.empty() : Optional.of(activeList.get(0));
+        }
 
+        if (activeLogOpt.isEmpty()) {
+            throw new IllegalStateException("No active timer found to pause/stop");
+        }
+
+        TaskTimeLog activeLog = activeLogOpt.get();
         Instant now = Instant.now();
         activeLog.setEndTime(now);
-        long seconds = Duration.between(activeLog.getStartTime(), now).getSeconds();
-        activeLog.setDurationSeconds(Math.max(seconds, 1L));
+        long sessionSeconds = Math.max(0L, Duration.between(activeLog.getStartTime(), now).getSeconds());
+        long prevAccumulated = activeLog.getDurationSeconds() != null ? activeLog.getDurationSeconds() : 0L;
+        activeLog.setDurationSeconds(prevAccumulated + sessionSeconds);
         if (note != null && !note.isBlank()) {
             activeLog.setNote(note);
         }
@@ -112,26 +164,78 @@ public class TimeTrackingService {
         return mapToDto(saved);
     }
 
+    @Transactional
+    public TimeLogResponseDto stopTimer(Long userId, String note) {
+        return stopTimer(userId, null, note);
+    }
+
     /**
-     * Get currently running timer for topbar live calculation.
+     * Get primary active timer for user (most recent active timer for topbar).
      */
     public RunningTimerDto getActiveTimerForUser(Long userId) {
-        Optional<TaskTimeLog> activeLogOpt = timeLogRepository.findActiveLogByUserId(userId);
-        if (activeLogOpt.isEmpty()) {
+        List<TaskTimeLog> activeList = timeLogRepository.findActiveLogsByUserId(userId);
+        if (activeList.isEmpty()) {
             return null;
         }
 
-        TaskTimeLog log = activeLogOpt.get();
-        long elapsedSeconds = Duration.between(log.getStartTime(), Instant.now()).getSeconds();
+        TaskTimeLog log = activeList.get(0);
+        long sessionElapsed = Math.max(0L, Duration.between(log.getStartTime(), Instant.now()).getSeconds());
+        long accumulated = log.getDurationSeconds() != null ? log.getDurationSeconds() : 0L;
         return new RunningTimerDto(
                 log.getId(),
                 log.getTask().getId(),
                 log.getTask().getTaskCode(),
                 log.getTask().getTitle(),
                 log.getStartTime(),
-                Math.max(elapsedSeconds, 0L),
-                log.getNote()
+                accumulated + sessionElapsed,
+                log.getNote(),
+                accumulated
         );
+    }
+
+    /**
+     * Get active timer for a specific task.
+     */
+    public RunningTimerDto getActiveTimerForTask(Long taskId, Long userId) {
+        Optional<TaskTimeLog> logOpt = timeLogRepository.findActiveLogByUserIdAndTaskId(userId, taskId);
+        if (logOpt.isEmpty()) {
+            return null;
+        }
+        TaskTimeLog log = logOpt.get();
+        long sessionElapsed = Math.max(0L, Duration.between(log.getStartTime(), Instant.now()).getSeconds());
+        long accumulated = log.getDurationSeconds() != null ? log.getDurationSeconds() : 0L;
+        return new RunningTimerDto(
+                log.getId(),
+                log.getTask().getId(),
+                log.getTask().getTaskCode(),
+                log.getTask().getTitle(),
+                log.getStartTime(),
+                accumulated + sessionElapsed,
+                log.getNote(),
+                accumulated
+        );
+    }
+
+    /**
+     * Get all active running timers for this user.
+     */
+    public List<RunningTimerDto> getAllActiveTimersForUser(Long userId) {
+        List<TaskTimeLog> activeLogs = timeLogRepository.findActiveLogsByUserId(userId);
+        Instant now = Instant.now();
+        return activeLogs.stream().map(log -> {
+            long sessionElapsed = Math.max(0L, Duration.between(log.getStartTime(), now).getSeconds());
+            long accumulated = log.getDurationSeconds() != null ? log.getDurationSeconds() : 0L;
+            return new RunningTimerDto(
+                    log.getId(),
+                    log.getTask().getId(),
+                    log.getTask().getTaskCode(),
+                    log.getTask().getTitle(),
+                    log.getStartTime(),
+                    accumulated + sessionElapsed,
+                    log.getNote(),
+                    accumulated
+            );
+        }).collect(Collectors.toList());
     }
 
     public List<TimeLogResponseDto> getTaskTimeLogs(Long taskId) {
@@ -185,7 +289,8 @@ public class TimeTrackingService {
             long seconds = Duration.between(log.getStartTime(), now).getSeconds();
             if (seconds > 36000) { // 10 hours
                 log.setEndTime(now);
-                log.setDurationSeconds(36000L);
+                long prevAccumulated = log.getDurationSeconds() != null ? log.getDurationSeconds() : 0L;
+                log.setDurationSeconds(prevAccumulated + 36000L);
                 log.setSource("AUTO_STOPPED");
                 log.setNote("Auto-stopped after 10 hours of inactivity");
                 timeLogRepository.save(log);

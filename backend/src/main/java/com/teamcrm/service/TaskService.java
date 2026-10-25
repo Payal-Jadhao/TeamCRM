@@ -8,6 +8,7 @@ import com.teamcrm.security.UserDetailsImpl;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
 import java.util.stream.Collectors;
@@ -306,9 +307,29 @@ public class TaskService {
         long totalItems = checklistRepository.countByTaskId(t.getId());
         long pendingItems = checklistRepository.countByTaskIdAndIsDoneFalse(t.getId());
 
-        // Check if any active timer exists for this task
-        boolean hasRunningTimer = timeLogRepository.findByTaskIdOrderByStartTimeDesc(t.getId())
-                .stream().anyMatch(l -> l.getEndTime() == null);
+        // Check if any active timer exists for this task and include active session elapsed seconds
+        List<TaskTimeLog> activeLogs = timeLogRepository.findByTaskIdAndEndTimeIsNull(t.getId());
+        boolean hasRunningTimer = !activeLogs.isEmpty();
+        long activeSessionSeconds = 0;
+        Instant now = Instant.now();
+        for (TaskTimeLog al : activeLogs) {
+            activeSessionSeconds += Math.max(0, Duration.between(al.getStartTime(), now).getSeconds());
+        }
+        long finalLoggedSeconds = (totalLogged != null ? totalLogged : 0L) + activeSessionSeconds;
+        Instant assignedAt = t.getAssignedAt() != null ? t.getAssignedAt() : t.getCreatedAt();
+        Instant firstStartedAt = t.getFirstStartedAt();
+        if (firstStartedAt == null) {
+            List<TaskTimeLog> allLogs = timeLogRepository.findByTaskIdOrderByStartTimeDesc(t.getId());
+            if (allLogs != null && !allLogs.isEmpty()) {
+                for (TaskTimeLog l : allLogs) {
+                    if (l.getStartTime() != null) {
+                        if (firstStartedAt == null || l.getStartTime().isBefore(firstStartedAt)) {
+                            firstStartedAt = l.getStartTime();
+                        }
+                    }
+                }
+            }
+        }
 
         return new TaskResponseDto(
                 t.getId(),
@@ -337,10 +358,13 @@ public class TaskService {
                 t.getLinkedDeal() != null ? t.getLinkedDeal().getId() : null,
                 t.getLinkedDeal() != null ? t.getLinkedDeal().getTitle() : null,
                 t.getChecklistMustBeCompleted(),
-                totalLogged != null ? totalLogged : 0L,
+                finalLoggedSeconds,
                 (int) totalItems,
                 (int) (totalItems - pendingItems),
-                hasRunningTimer
+                hasRunningTimer,
+                t.getCreatedAt(),
+                assignedAt,
+                firstStartedAt
         );
     }
 }

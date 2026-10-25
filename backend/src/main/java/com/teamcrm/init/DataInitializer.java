@@ -179,17 +179,18 @@ public class DataInitializer implements CommandLineRunner {
         managerRole.setPermissions(mgrPerms);
         managerRole = roleRepository.save(managerRole);
 
-        // Employee: initially NO permissions (as specified: empty set)
+        // Employee: initially gets TIME_TRACKING, DISCUSSIONS, and API_HANDOFF modules (all managed by admin)
         Role employeeRole = roleRepository.findByName("ROLE_EMPLOYEE").orElseGet(() -> {
             Role r = new Role("ROLE_EMPLOYEE", "Individual contributor");
             return roleRepository.save(r);
         });
         roleRepository.deleteRolePermissions(employeeRole.getId());
-        if (employeeRole.getPermissions() != null) {
-            employeeRole.getPermissions().clear();
-        } else {
-            employeeRole.setPermissions(new HashSet<>());
-        }
+        Set<Permission> empPerms = allPerms.stream()
+                .filter(p -> "TIME_TRACKING".equalsIgnoreCase(p.getModule())
+                        || "DISCUSSIONS".equalsIgnoreCase(p.getModule())
+                        || "API_HANDOFF".equalsIgnoreCase(p.getModule()))
+                .collect(Collectors.toSet());
+        employeeRole.setPermissions(empPerms);
         employeeRole = roleRepository.saveAndFlush(employeeRole);
 
 
@@ -273,15 +274,23 @@ public class DataInitializer implements CommandLineRunner {
             employee.setIsFirstLogin(false);
             employee.setPasswordHash(passwordEncoder.encode("1234"));
             employee.setRole(employeeRole);
-            employee.setExtraPermissions(new HashSet<>());
+            Set<Permission> initEmpPerms = allPerms.stream()
+                    .filter(p -> "TIME_TRACKING".equalsIgnoreCase(p.getModule())
+                            || "DISCUSSIONS".equalsIgnoreCase(p.getModule())
+                            || "API_HANDOFF".equalsIgnoreCase(p.getModule()))
+                    .collect(Collectors.toSet());
+            employee.setExtraPermissions(initEmpPerms);
             employee.setTeamTag("FRONTEND");
             employee.setIsActive(true);
             userRepository.save(employee);
         } else {
             userRepository.deleteUserPermissions(employee.getId());
-            if (employee.getExtraPermissions() != null) {
-                employee.getExtraPermissions().clear();
-            }
+            Set<Permission> initEmpPerms = allPerms.stream()
+                    .filter(p -> "TIME_TRACKING".equalsIgnoreCase(p.getModule())
+                            || "DISCUSSIONS".equalsIgnoreCase(p.getModule())
+                            || "API_HANDOFF".equalsIgnoreCase(p.getModule()))
+                    .collect(Collectors.toSet());
+            employee.setExtraPermissions(initEmpPerms);
             userRepository.saveAndFlush(employee);
         }
 

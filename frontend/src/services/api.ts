@@ -410,16 +410,25 @@ export const timeApi = {
       () => mockStore.startTimer(taskId, note)
     );
   },
-  stopTimer: async (note?: string): Promise<TimeLog> => {
+  stopTimer: async (taskId?: number, note?: string): Promise<TimeLog> => {
     return safeCall(
-      () => apiClient.post<TimeLog>('/time/stop', { note }).then((r) => r.data),
-      () => mockStore.stopTimer(note)
+      () => apiClient.post<TimeLog>('/time/stop', { taskId, note }).then((r) => r.data),
+      () => mockStore.stopTimer(taskId, note)
     );
   },
-  getActiveTimer: async (): Promise<RunningTimer | null> => {
+  getActiveTimer: async (taskId?: number): Promise<RunningTimer | null> => {
     return safeCall(
-      () => apiClient.get<RunningTimer | null>('/time/active').then((r) => r.data),
-      () => mockStore.getActiveTimer()
+      () =>
+        taskId
+          ? apiClient.get<RunningTimer | null>(`/time/task/${taskId}/active`).then((r) => r.data)
+          : apiClient.get<RunningTimer | null>('/time/active').then((r) => r.data),
+      () => mockStore.getActiveTimer(taskId)
+    );
+  },
+  getAllActiveTimers: async (): Promise<RunningTimer[]> => {
+    return safeCall(
+      () => apiClient.get<RunningTimer[]>('/time/active-all').then((r) => r.data),
+      () => mockStore.getAllActiveTimers()
     );
   },
   getTaskLogs: async (taskId: number): Promise<TimeLog[]> => {
@@ -526,6 +535,18 @@ export const apiHandoffApi = {
           return docs[idx];
         }
         return docs[0];
+      }
+    );
+  },
+  deleteApiDoc: async (id: number): Promise<void> => {
+    return safeCall(
+      () => apiClient.delete(`/api-docs/${id}`).then(() => undefined),
+      () => {
+        const docs = mockStore.getApiDocs();
+        const filtered = docs.filter((d) => d.id !== id);
+        if (typeof window !== 'undefined') {
+          sessionStorage.setItem('teamcrm_store_api_docs', JSON.stringify(filtered));
+        }
       }
     );
   },

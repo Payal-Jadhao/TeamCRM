@@ -61,3 +61,23 @@ body {
 .running-timer-pulse {
   animation: timerPulse 2s infinite;
 }
+
+/* Universal cursor rules: hand pointer on all buttons, checkboxes, and clickable controls */
+button,
+[role="button"],
+input[type="button"],
+input[type="submit"],
+input[type="reset"],
+input[type="checkbox"],
+input[type="radio"],
+select,
+.cursor-pointer {
+  cursor: pointer !important;
+}
+
+button:disabled,
+input:disabled,
+select:disabled,
+.cursor-not-allowed {
+  cursor: not-allowed !important;
+}

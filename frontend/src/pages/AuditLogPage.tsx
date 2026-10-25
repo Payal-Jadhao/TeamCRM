@@ -3,6 +3,7 @@ import { auditApi } from '../services/api';
 import type { AuditLogItem } from '../types';
 import { History, Shield, Filter, Search } from 'lucide-react';
 import { TableLoader } from '../components/ui/LoadingSpinner';
+import { formatDateTimeDDMMYYYY } from '../utils/dateUtils';
 
 export const AuditLogPage: React.FC = () => {
   const [logs, setLogs] = useState<AuditLogItem[]>([]);
@@ -97,7 +98,7 @@ export const AuditLogPage: React.FC = () => {
                 filtered.map((log) => (
                   <tr key={log.id} className="hover:bg-purple-50/40 transition-colors">
                     <td className="px-6 py-4 font-mono text-text-secondary whitespace-nowrap">
-                      {new Date(log.createdAt).toLocaleString()}
+                      {formatDateTimeDDMMYYYY(log.createdAt)}
                     </td>
                     <td className="px-6 py-4 font-bold text-text-primary">
                       {log.actorEmail || 'System Automated'}

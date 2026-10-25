@@ -20,6 +20,7 @@ import {
   Loader2,
 } from 'lucide-react';
 import { PageLoader, ButtonSpinner } from '../components/ui/LoadingSpinner';
+import { formatDateDDMMYYYY } from '../utils/dateUtils';
 
 interface MeetingsPageProps {
   initialTaskForMeeting?: Task | null;
@@ -331,7 +332,7 @@ export const MeetingsPage: React.FC<MeetingsPageProps> = ({
                   <div className="flex items-center gap-1.5">
                     <Clock className="w-3.5 h-3.5 text-primary" />
                     <span>
-                      {new Date(m.startTime).toLocaleDateString()} at{' '}
+                      {formatDateDDMMYYYY(m.startTime)} at{' '}
                       {new Date(m.startTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}{' '}
                       ({m.durationMinutes}m)
                     </span>

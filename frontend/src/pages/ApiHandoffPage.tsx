@@ -6,6 +6,7 @@ import { StatusBadge } from '../components/ui/Badge';
 import { Modal } from '../components/ui/Modal';
 import { PageLoader, ButtonSpinner } from '../components/ui/LoadingSpinner';
 import { MultiSelectUserDropdown } from '../components/ui/MultiSelectUserDropdown';
+import { formatDateTimeDDMMYYYY } from '../utils/dateUtils';
 import {
   Code2,
   FileCode,
@@ -22,6 +23,7 @@ import {
   Shield,
   UserCheck,
   Edit3,
+  Trash2,
   Globe,
   FolderGit2
 } from 'lucide-react';
@@ -194,6 +196,19 @@ export const ApiHandoffPage: React.FC = () => {
       alert(e.response?.data?.message || e.message || 'Failed to update API specification');
     } finally {
       setIsSubmitting(false);
+    }
+  };
+
+  const handleDeleteDoc = async (id: number) => {
+    if (!window.confirm('Are you sure you want to delete this API specification?')) {
+      return;
+    }
+    try {
+      await apiHandoffApi.deleteApiDoc(id);
+      setApiDocs((prev) => prev.filter((d) => d.id !== id));
+    } catch (e: any) {
+      console.error(e);
+      alert(e.response?.data?.message || e.message || 'Failed to delete API specification');
     }
   };
 
@@ -431,6 +446,17 @@ export const ApiHandoffPage: React.FC = () => {
                         </button>
                       )}
 
+                      {canEdit && (
+                        <button
+                          onClick={() => handleDeleteDoc(doc.id)}
+                          className="flex items-center gap-1.5 px-2.5 py-1 bg-rose-50 hover:bg-rose-100 text-rose-700 font-bold text-xs rounded-lg border border-rose-200 transition-colors cursor-pointer"
+                          title={isAdmin ? 'Admin can delete all specs' : 'Delete your published specification'}
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                          Delete
+                        </button>
+                      )}
+
                       <button
                         onClick={() => {
                           setSelectedDoc(doc);
@@ -555,14 +581,7 @@ export const ApiHandoffPage: React.FC = () => {
                                   )}
                                 </div>
                                 <span className="text-text-secondary font-mono text-[10px]">
-                                  {c.createdAt
-                                    ? new Date(c.createdAt).toLocaleString([], {
-                                        month: 'short',
-                                        day: 'numeric',
-                                        hour: '2-digit',
-                                        minute: '2-digit',
-                                      })
-                                    : 'Just now'}
+                                  {c.createdAt ? formatDateTimeDDMMYYYY(c.createdAt) : 'Just now'}
                                 </span>
                               </div>
                               <p className="text-xs text-text-primary whitespace-pre-wrap">{c.text}</p>

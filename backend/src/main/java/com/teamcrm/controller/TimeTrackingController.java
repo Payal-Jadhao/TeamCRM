@@ -31,8 +31,9 @@ public class TimeTrackingController {
     public ResponseEntity<TimeLogResponseDto> stopTimer(
             @AuthenticationPrincipal UserDetailsImpl currentUser,
             @RequestBody(required = false) StopTimerRequest request) {
+        Long taskId = request != null ? request.taskId() : null;
         String note = request != null ? request.note() : null;
-        return ResponseEntity.ok(timeTrackingService.stopTimer(currentUser.getId(), note));
+        return ResponseEntity.ok(timeTrackingService.stopTimer(currentUser.getId(), taskId, note));
     }
 
     @GetMapping("/active")
@@ -40,6 +41,19 @@ public class TimeTrackingController {
             @AuthenticationPrincipal UserDetailsImpl currentUser) {
         RunningTimerDto active = timeTrackingService.getActiveTimerForUser(currentUser.getId());
         return ResponseEntity.ok(active);
+    }
+
+    @GetMapping("/active-all")
+    public ResponseEntity<List<RunningTimerDto>> getAllActiveTimers(
+            @AuthenticationPrincipal UserDetailsImpl currentUser) {
+        return ResponseEntity.ok(timeTrackingService.getAllActiveTimersForUser(currentUser.getId()));
+    }
+
+    @GetMapping("/task/{taskId}/active")
+    public ResponseEntity<RunningTimerDto> getActiveTimerForTask(
+            @PathVariable Long taskId,
+            @AuthenticationPrincipal UserDetailsImpl currentUser) {
+        return ResponseEntity.ok(timeTrackingService.getActiveTimerForTask(taskId, currentUser.getId()));
     }
 
     @GetMapping("/task/{taskId}")

@@ -51,12 +51,9 @@ INSERT INTO role_permissions (role_id, permission_id)
 SELECT 2, id FROM permissions WHERE code NOT IN ('ROLE_MANAGE')
 ON CONFLICT DO NOTHING;
 
--- Employee gets daily work permissions
+-- Employee initially gets TIME_TRACKING, DISCUSSIONS, API_HANDOFF (all others managed by admin)
 INSERT INTO role_permissions (role_id, permission_id)
-SELECT 3, id FROM permissions WHERE code IN (
-    'TASK_CREATE', 'TASK_EDIT', 'TIME_TRACK', 'CHECKLIST_MANAGE',
-    'DISCUSSION_POST', 'API_DOC_REVIEW', 'LEAD_MANAGE', 'DEAL_MANAGE'
-)
+SELECT 3, id FROM permissions WHERE module IN ('TIME_TRACKING', 'DISCUSSIONS', 'API_HANDOFF')
 ON CONFLICT DO NOTHING;
 
 -- 4. TEAMS

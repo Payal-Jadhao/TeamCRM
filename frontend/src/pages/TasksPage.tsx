@@ -41,8 +41,10 @@ import {
   ArrowRight,
   ExternalLink,
   ChevronRight,
+  Loader2,
 } from 'lucide-react';
 import { PageLoader, ButtonSpinner } from '../components/ui/LoadingSpinner';
+import { formatDateDDMMYYYY } from '../utils/dateUtils';
 
 interface TasksPageProps {
   onScheduleMeeting: (task: Task) => void;
@@ -96,6 +98,14 @@ export const TasksPage: React.FC<TasksPageProps> = ({
   const [taskApiDocs, setTaskApiDocs] = useState<ApiDoc[]>([]);
 
   const [statusError, setStatusError] = useState('');
+
+  // Async action loading states for buttons and checkboxes
+  const [loadingTimerTaskId, setLoadingTimerTaskId] = useState<number | null>(null);
+  const [loadingChecklistId, setLoadingChecklistId] = useState<number | null>(null);
+  const [isAddingChecklist, setIsAddingChecklist] = useState(false);
+  const [deletingChecklistId, setDeletingChecklistId] = useState<number | null>(null);
+  const [loadingReviewTaskId, setLoadingReviewTaskId] = useState<number | null>(null);
+  const [loadingApproveTaskId, setLoadingApproveTaskId] = useState<number | null>(null);
 
   // Create Task Modal State
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
@@ -280,8 +290,9 @@ export const TasksPage: React.FC<TasksPageProps> = ({
   };
 
   // Workflow Handlers:
-  // 1. To Do -> In Progress & Start Timer
+  // 1. To Do -> In Progress & Start / Resume Timer
   const handleStartWork = async (taskId: number) => {
+    setLoadingTimerTaskId(taskId);
     try {
       try { await timeApi.startTimer(taskId, 'Sprint execution'); } catch { }
       const updated = await taskApi.updateStatus(taskId, 'IN_PROGRESS');
@@ -293,13 +304,16 @@ export const TasksPage: React.FC<TasksPageProps> = ({
       showToast('Timer started! Task moved to In Progress.', 'success');
     } catch (e: any) {
       showToast(e.response?.data?.message || 'Failed to start work', 'error');
+    } finally {
+      setLoadingTimerTaskId(null);
     }
   };
 
   // 2. Pause Timer (stays in In Progress)
   const handlePauseWork = async (taskId: number) => {
+    setLoadingTimerTaskId(taskId);
     try {
-      await timeApi.stopTimer('Session paused');
+      await timeApi.stopTimer(taskId, 'Session paused');
       setTasks((prev) => prev.map((t) => (t.id === taskId ? { ...t, isTimerRunning: false } : t)));
       if (activeTask && activeTask.id === taskId) {
         setActiveTask((prev) => prev ? { ...prev, isTimerRunning: false } : null);
@@ -308,13 +322,16 @@ export const TasksPage: React.FC<TasksPageProps> = ({
       showToast('Timer paused. Task remains In Progress.', 'success');
     } catch (e: any) {
       showToast(e.response?.data?.message || 'Failed to pause timer', 'error');
+    } finally {
+      setLoadingTimerTaskId(null);
     }
   };
 
   // 3. In Progress -> Review (Stops timer & submits for review)
   const handleSubmitForReview = async (taskId: number) => {
+    setLoadingReviewTaskId(taskId);
     try {
-      try { await timeApi.stopTimer('Submitted for review'); } catch { }
+      try { await timeApi.stopTimer(taskId, 'Submitted for review'); } catch { }
       const updated = await taskApi.updateStatus(taskId, 'REVIEW');
       setTasks((prev) => prev.map((t) => (t.id === taskId ? { ...updated, isTimerRunning: false } : t)));
       if (activeTask && activeTask.id === taskId) {
@@ -326,11 +343,14 @@ export const TasksPage: React.FC<TasksPageProps> = ({
       const msg = e.response?.data?.message || 'Failed to submit task for review';
       setStatusError(msg);
       showToast(msg, 'error');
+    } finally {
+      setLoadingReviewTaskId(null);
     }
   };
 
   // 4. Review -> Done (Only for Admin/Manager approval)
   const handleApproveTask = async (taskId: number) => {
+    setLoadingApproveTaskId(taskId);
     try {
       const updated = await taskApi.updateStatus(taskId, 'DONE');
       setTasks((prev) => prev.map((t) => (t.id === taskId ? updated : t)));
@@ -342,12 +362,25 @@ export const TasksPage: React.FC<TasksPageProps> = ({
       const msg = err.response?.data?.message || err.message || 'Cannot complete task';
       setStatusError(msg);
       showToast(msg, 'error');
+    } finally {
+      setLoadingApproveTaskId(null);
     }
   };
 
   useEffect(() => {
     loadData();
   }, []);
+
+  useEffect(() => {
+    const handleTimerSync = () => {
+      loadData();
+      if (activeTask) {
+        loadTaskDetails(activeTask.id);
+      }
+    };
+    window.addEventListener('teamcrm_timer_update', handleTimerSync);
+    return () => window.removeEventListener('teamcrm_timer_update', handleTimerSync);
+  }, [activeTask?.id]);
 
   useEffect(() => {
     if (selectedProjectId) {
@@ -398,6 +431,89 @@ export const TasksPage: React.FC<TasksPageProps> = ({
       { code: 'CHORE', name: 'Chore / Maintenance' },
     ];
 
+  // Format total seconds into HH:MM:SS matching the Topbar display (e.g. 00:03:32)
+  const formatDurationHHMMSS = (totalSeconds: number) => {
+    const sec = Math.max(0, Math.floor(totalSeconds || 0));
+    const hours = Math.floor(sec / 3600);
+    const minutes = Math.floor((sec % 3600) / 60);
+    const seconds = sec % 60;
+    return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+  };
+
+  // Calculate task start delay and latency info: (firstStartedAt - assignedAt)
+  const getTaskStartDelayInfo = (task: Task, logs: TimeLog[]) => {
+    const assignedStr = task.assignedAt || task.createdAt;
+    if (!assignedStr) return null;
+    const assignedDate = new Date(assignedStr);
+    if (isNaN(assignedDate.getTime())) return null;
+
+    // Find earliest work start time
+    let startStr = task.firstStartedAt;
+    if (!startStr && logs && logs.length > 0) {
+      const validLogs = logs.filter((l) => l.startTime);
+      if (validLogs.length > 0) {
+        const sorted = [...validLogs].sort(
+          (a, b) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime()
+        );
+        startStr = sorted[0].startTime;
+      }
+    }
+
+    if (startStr) {
+      const startDate = new Date(startStr);
+      if (!isNaN(startDate.getTime())) {
+        const diffMs = startDate.getTime() - assignedDate.getTime();
+        const diffMinutes = Math.max(0, Math.round(diffMs / 60000));
+        const hours = Math.floor(diffMinutes / 60);
+        const mins = diffMinutes % 60;
+
+        let delayText = '';
+        if (diffMinutes === 0) {
+          delayText = 'Task started after < 1 min';
+        } else if (diffMinutes < 60) {
+          delayText = `Task started after ${diffMinutes} min`;
+        } else {
+          delayText = `Task started after ${hours}h ${mins}m (${diffMinutes} min)`;
+        }
+
+        return {
+          isStarted: true,
+          diffMinutes,
+          delayText,
+          assignedTimeStr: assignedDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          assignedDateStr: formatDateDDMMYYYY(assignedDate),
+          startTimeStr: startDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          startDateStr: formatDateDDMMYYYY(startDate),
+        };
+      }
+    }
+
+    // Task is not started yet: calculate waiting time since assignment
+    const nowMs = Date.now();
+    const waitingMs = Math.max(0, nowMs - assignedDate.getTime());
+    const waitingMinutes = Math.floor(waitingMs / 60000);
+    const waitingHours = Math.floor(waitingMinutes / 60);
+    const waitingMins = waitingMinutes % 60;
+
+    let waitingText = '';
+    if (waitingMinutes < 1) {
+      waitingText = 'Task assigned just now (Waiting to start)';
+    } else if (waitingMinutes < 60) {
+      waitingText = `Not started yet • Assigned ${waitingMinutes} min ago`;
+    } else {
+      waitingText = `Not started yet • Assigned ${waitingHours}h ${waitingMins}m ago`;
+    }
+
+    return {
+      isStarted: false,
+      diffMinutes: waitingMinutes,
+      delayText: waitingText,
+      assignedTimeStr: assignedDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      assignedDateStr: formatDateDDMMYYYY(assignedDate),
+      startTimeStr: null,
+      startDateStr: null,
+    };
+  };
 
   const loadTaskDetails = async (taskId: number) => {
     try {
@@ -439,29 +555,38 @@ export const TasksPage: React.FC<TasksPageProps> = ({
 
   // Time Tracking Controls
   const handleStartTimer = async (taskId: number) => {
+    setLoadingTimerTaskId(taskId);
     try {
       await timeApi.startTimer(taskId, 'Active sprint development');
       setIsTaskTimerRunning(true);
-      loadTaskDetails(taskId);
+      window.dispatchEvent(new Event('teamcrm_timer_update'));
+      await loadTaskDetails(taskId);
       loadData();
     } catch (e) {
       console.error(e);
+    } finally {
+      setLoadingTimerTaskId(null);
     }
   };
 
   const handleStopTimer = async (taskId: number) => {
+    setLoadingTimerTaskId(taskId);
     try {
-      await timeApi.stopTimer('Session paused');
+      await timeApi.stopTimer(taskId, 'Session paused');
       setIsTaskTimerRunning(false);
-      loadTaskDetails(taskId);
+      window.dispatchEvent(new Event('teamcrm_timer_update'));
+      await loadTaskDetails(taskId);
       loadData();
     } catch (e) {
       console.error(e);
+    } finally {
+      setLoadingTimerTaskId(null);
     }
   };
 
   // Checklist Actions
   const handleToggleChecklist = async (itemId: number) => {
+    setLoadingChecklistId(itemId);
     try {
       await taskApi.toggleChecklistItem(itemId);
       if (activeTask) {
@@ -474,24 +599,33 @@ export const TasksPage: React.FC<TasksPageProps> = ({
       }
     } catch (e) {
       console.error(e);
+    } finally {
+      setLoadingChecklistId(null);
     }
   };
 
   const handleAddChecklistItem = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newChecklistText.trim() || !activeTask) return;
+    setIsAddingChecklist(true);
     try {
       await taskApi.addChecklistItem(activeTask.id, newChecklistText.trim());
       setNewChecklistText('');
       const chk = await taskApi.getChecklist(activeTask.id);
       setChecklist(chk);
+      const t = await taskApi.getTaskById(activeTask.id);
+      setActiveTask(t);
+      setTasks((prev) => prev.map((x) => (x.id === t.id ? t : x)));
     } catch (e) {
       console.error(e);
+    } finally {
+      setIsAddingChecklist(false);
     }
   };
 
   const handleDeleteChecklistItem = async (itemId: number) => {
     if (!activeTask) return;
+    setDeletingChecklistId(itemId);
     try {
       await taskApi.deleteChecklistItem(itemId);
       const chk = await taskApi.getChecklist(activeTask.id);
@@ -501,6 +635,8 @@ export const TasksPage: React.FC<TasksPageProps> = ({
       setTasks((prev) => prev.map((x) => (x.id === t.id ? t : x)));
     } catch (e) {
       console.error(e);
+    } finally {
+      setDeletingChecklistId(null);
     }
   };
 
@@ -658,8 +794,8 @@ export const TasksPage: React.FC<TasksPageProps> = ({
       {toast && (
         <div
           className={`fixed top-5 right-5 z-50 px-4 py-3 rounded-xl shadow-lg border flex items-center gap-3 text-xs font-bold transition-all animate-bounce ${toast.type === 'success'
-              ? 'bg-emerald-50 text-emerald-800 border-emerald-300'
-              : 'bg-rose-50 text-rose-800 border-rose-300'
+            ? 'bg-emerald-50 text-emerald-800 border-emerald-300'
+            : 'bg-rose-50 text-rose-800 border-rose-300'
             }`}
         >
           <span>{toast.type === 'success' ? '✓' : '⚠️'}</span>
@@ -766,8 +902,8 @@ export const TasksPage: React.FC<TasksPageProps> = ({
             <button
               onClick={() => setViewMode('table')}
               className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${viewMode === 'table'
-                  ? 'bg-white text-primary shadow-xs'
-                  : 'text-text-secondary hover:text-text-primary'
+                ? 'bg-white text-primary shadow-xs'
+                : 'text-text-secondary hover:text-text-primary'
                 }`}
             >
               <List className="w-3.5 h-3.5" />
@@ -776,8 +912,8 @@ export const TasksPage: React.FC<TasksPageProps> = ({
             <button
               onClick={() => setViewMode('board')}
               className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${viewMode === 'board'
-                  ? 'bg-white text-primary shadow-xs'
-                  : 'text-text-secondary hover:text-text-primary'
+                ? 'bg-white text-primary shadow-xs'
+                : 'text-text-secondary hover:text-text-primary'
                 }`}
             >
               <LayoutGrid className="w-3.5 h-3.5" />
@@ -812,15 +948,15 @@ export const TasksPage: React.FC<TasksPageProps> = ({
             key={tab.key}
             onClick={() => setActiveStatusTab(tab.key as any)}
             className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 shrink-0 cursor-pointer ${activeStatusTab === tab.key
-                ? 'bg-primary text-white shadow-2xs'
-                : 'bg-white text-text-secondary hover:text-text-primary border border-border-custom'
+              ? 'bg-primary text-white shadow-2xs'
+              : 'bg-white text-text-secondary hover:text-text-primary border border-border-custom'
               }`}
           >
             <span>{tab.label}</span>
             <span
               className={`px-1.5 py-0.5 rounded-full text-[10px] font-bold ${activeStatusTab === tab.key
-                  ? 'bg-white/20 text-white'
-                  : 'bg-purple-100 text-primary'
+                ? 'bg-white/20 text-white'
+                : 'bg-purple-100 text-primary'
                 }`}
             >
               {tab.count}
@@ -869,7 +1005,7 @@ export const TasksPage: React.FC<TasksPageProps> = ({
                   <th className="py-3 px-4">Project</th>
                   <th className="py-3 px-3">Priority</th>
                   <th className="py-3 px-4">Assignee</th>
-                  <th className="py-3 px-4">Time & Due</th>
+                  <th className="py-3 px-4">Due</th>
                   <th className="py-3 px-3">Status</th>
                   <th className="py-3 px-4 text-right">Actions</th>
                 </tr>
@@ -970,15 +1106,15 @@ export const TasksPage: React.FC<TasksPageProps> = ({
                       {/* Time & Due Date */}
                       <td className="py-3.5 px-4 text-xs">
                         <div className="font-semibold text-text-primary">
-                          {task.dueDate || 'No due date'}
+                          {task.dueDate ? formatDateDDMMYYYY(task.dueDate) : 'No due date'}
                         </div>
-                        <div className="text-[11px] text-text-secondary flex items-center gap-1 mt-0.5">
+                        {/* <div className="text-[11px] text-text-secondary flex items-center gap-1 mt-0.5">
                           <Clock className="w-3 h-3 text-gray-400" />
                           <span>{(task.totalLoggedSeconds / 3600).toFixed(1)}h logged</span>
                           {task.estimatedHours && (
                             <span>/ {task.estimatedHours}h est</span>
                           )}
-                        </div>
+                        </div> */}
                       </td>
 
                       {/* Status */}
@@ -996,11 +1132,17 @@ export const TasksPage: React.FC<TasksPageProps> = ({
                           {task.status === 'TODO' && (
                             <button
                               type="button"
+                              disabled={loadingTimerTaskId === task.id}
                               onClick={() => handleStartWork(task.id)}
-                              className="px-2.5 py-1 rounded-lg bg-primary hover:bg-primary-hover text-white font-bold text-xs cursor-pointer transition-colors flex items-center gap-1 shadow-2xs"
+                              className="px-2.5 py-1 rounded-lg bg-primary hover:bg-primary-hover disabled:opacity-60 text-white font-bold text-xs cursor-pointer transition-colors flex items-center gap-1 shadow-2xs"
                               title="Start Work & Timer"
                             >
-                              <Play className="w-3 h-3" /> Start
+                              {loadingTimerTaskId === task.id ? (
+                                <Loader2 className="w-3 h-3 animate-spin" />
+                              ) : (
+                                <Play className="w-3 h-3" />
+                              )}
+                              {loadingTimerTaskId === task.id ? 'Starting...' : 'Start'}
                             </button>
                           )}
 
@@ -1009,28 +1151,42 @@ export const TasksPage: React.FC<TasksPageProps> = ({
                               {task.isTimerRunning ? (
                                 <button
                                   type="button"
+                                  disabled={loadingTimerTaskId === task.id}
                                   onClick={() => handlePauseWork(task.id)}
-                                  className="px-2.5 py-1 rounded-lg bg-amber-100 hover:bg-amber-200 text-amber-800 font-bold text-xs cursor-pointer transition-colors flex items-center gap-1"
+                                  className="px-2.5 py-1 rounded-lg bg-amber-100 hover:bg-amber-200 disabled:opacity-60 text-amber-800 font-bold text-xs cursor-pointer transition-colors flex items-center gap-1"
                                   title="Pause Timer"
                                 >
-                                  <Pause className="w-3 h-3" /> Pause
+                                  {loadingTimerTaskId === task.id ? (
+                                    <Loader2 className="w-3 h-3 animate-spin" />
+                                  ) : (
+                                    <Pause className="w-3 h-3" />
+                                  )}
+                                  {loadingTimerTaskId === task.id ? 'Pausing...' : 'Pause'}
                                 </button>
                               ) : (
                                 <button
                                   type="button"
+                                  disabled={loadingTimerTaskId === task.id}
                                   onClick={() => handleStartWork(task.id)}
-                                  className="px-2.5 py-1 rounded-lg bg-blue-100 hover:bg-blue-200 text-blue-800 font-bold text-xs cursor-pointer transition-colors flex items-center gap-1"
+                                  className="px-2.5 py-1 rounded-lg bg-blue-100 hover:bg-blue-200 disabled:opacity-60 text-blue-800 font-bold text-xs cursor-pointer transition-colors flex items-center gap-1"
                                   title="Resume Timer"
                                 >
-                                  <Play className="w-3 h-3" /> Resume
+                                  {loadingTimerTaskId === task.id ? (
+                                    <Loader2 className="w-3 h-3 animate-spin" />
+                                  ) : (
+                                    <Play className="w-3 h-3" />
+                                  )}
+                                  {loadingTimerTaskId === task.id ? 'Resuming...' : 'Resume'}
                                 </button>
                               )}
                               <button
                                 type="button"
+                                disabled={loadingReviewTaskId === task.id}
                                 onClick={() => handleSubmitForReview(task.id)}
-                                className="px-2.5 py-1 rounded-lg bg-purple-100 hover:bg-purple-200 text-primary font-bold text-xs cursor-pointer transition-colors"
+                                className="px-2.5 py-1 rounded-lg bg-purple-100 hover:bg-purple-200 disabled:opacity-60 text-primary font-bold text-xs cursor-pointer transition-colors flex items-center gap-1"
                               >
-                                Review
+                                {loadingReviewTaskId === task.id && <Loader2 className="w-3 h-3 animate-spin" />}
+                                {loadingReviewTaskId === task.id ? 'Submitting...' : 'Review'}
                               </button>
                             </>
                           )}
@@ -1040,10 +1196,16 @@ export const TasksPage: React.FC<TasksPageProps> = ({
                               {isAdminOrManager ? (
                                 <button
                                   type="button"
+                                  disabled={loadingApproveTaskId === task.id}
                                   onClick={() => handleApproveTask(task.id)}
-                                  className="px-2.5 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs cursor-pointer transition-colors flex items-center gap-1 shadow-2xs"
+                                  className="px-2.5 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-700 disabled:opacity-60 text-white font-bold text-xs cursor-pointer transition-colors flex items-center gap-1 shadow-2xs"
                                 >
-                                  ✓ Approve
+                                  {loadingApproveTaskId === task.id ? (
+                                    <Loader2 className="w-3 h-3 animate-spin" />
+                                  ) : (
+                                    '✓'
+                                  )}
+                                  {loadingApproveTaskId === task.id ? 'Approving...' : 'Approve'}
                                 </button>
                               ) : (
                                 <span className="text-[10px] font-bold text-amber-800 bg-amber-50 px-2 py-1 rounded-lg border border-amber-200">
@@ -1211,8 +1373,8 @@ export const TasksPage: React.FC<TasksPageProps> = ({
                             {task.checklistTotal > 0 && (
                               <span
                                 className={`flex items-center gap-1 ${task.checklistCompleted === task.checklistTotal
-                                    ? 'text-emerald-600 font-semibold'
-                                    : ''
+                                  ? 'text-emerald-600 font-semibold'
+                                  : ''
                                   }`}
                               >
                                 <CheckSquare className="w-3.5 h-3.5" />
@@ -1258,15 +1420,20 @@ export const TasksPage: React.FC<TasksPageProps> = ({
 
                         {/* Action Strip */}
                         <div className="mt-2.5 pt-2 border-t border-dashed border-gray-100 flex items-center justify-between text-[10px]">
-                          <span className="text-gray-400 font-medium">Action:</span>
                           <div className="flex items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
                             {col.status === 'TODO' && (
                               <button
                                 type="button"
+                                disabled={loadingTimerTaskId === task.id}
                                 onClick={() => handleStartWork(task.id)}
-                                className="px-2.5 py-1 rounded-lg bg-primary hover:bg-primary-hover text-white font-bold cursor-pointer transition-colors flex items-center gap-1 shadow-2xs"
+                                className="px-2.5 py-1 rounded-lg bg-primary hover:bg-primary-hover disabled:opacity-60 text-white font-bold cursor-pointer transition-colors flex items-center gap-1 shadow-2xs"
                               >
-                                <Play className="w-3 h-3" /> Start Work
+                                {loadingTimerTaskId === task.id ? (
+                                  <Loader2 className="w-3 h-3 animate-spin" />
+                                ) : (
+                                  <Play className="w-3 h-3" />
+                                )}
+                                {loadingTimerTaskId === task.id ? 'Starting...' : 'Start Work'}
                               </button>
                             )}
 
@@ -1275,26 +1442,40 @@ export const TasksPage: React.FC<TasksPageProps> = ({
                                 {task.isTimerRunning ? (
                                   <button
                                     type="button"
+                                    disabled={loadingTimerTaskId === task.id}
                                     onClick={() => handlePauseWork(task.id)}
-                                    className="px-2 py-1 rounded-lg bg-amber-100 hover:bg-amber-200 text-amber-800 font-bold cursor-pointer transition-colors flex items-center gap-1"
+                                    className="px-2 py-1 rounded-lg bg-amber-100 hover:bg-amber-200 disabled:opacity-60 text-amber-800 font-bold cursor-pointer transition-colors flex items-center gap-1"
                                   >
-                                    <Pause className="w-3 h-3" /> Pause
+                                    {loadingTimerTaskId === task.id ? (
+                                      <Loader2 className="w-3 h-3 animate-spin" />
+                                    ) : (
+                                      <Pause className="w-3 h-3" />
+                                    )}
+                                    {loadingTimerTaskId === task.id ? 'Pausing...' : 'Pause'}
                                   </button>
                                 ) : (
                                   <button
                                     type="button"
+                                    disabled={loadingTimerTaskId === task.id}
                                     onClick={() => handleStartWork(task.id)}
-                                    className="px-2 py-1 rounded-lg bg-blue-100 hover:bg-blue-200 text-blue-800 font-bold cursor-pointer transition-colors flex items-center gap-1"
+                                    className="px-2 py-1 rounded-lg bg-blue-100 hover:bg-blue-200 disabled:opacity-60 text-blue-800 font-bold cursor-pointer transition-colors flex items-center gap-1"
                                   >
-                                    <Play className="w-3 h-3" /> Resume
+                                    {loadingTimerTaskId === task.id ? (
+                                      <Loader2 className="w-3 h-3 animate-spin" />
+                                    ) : (
+                                      <Play className="w-3 h-3" />
+                                    )}
+                                    {loadingTimerTaskId === task.id ? 'Resuming...' : 'Resume'}
                                   </button>
                                 )}
                                 <button
                                   type="button"
+                                  disabled={loadingReviewTaskId === task.id}
                                   onClick={() => handleSubmitForReview(task.id)}
-                                  className="px-2 py-1 rounded-lg bg-purple-100 hover:bg-purple-200 text-primary font-bold cursor-pointer transition-colors flex items-center gap-1"
+                                  className="px-2 py-1 rounded-lg bg-purple-100 hover:bg-purple-200 disabled:opacity-60 text-primary font-bold cursor-pointer transition-colors flex items-center gap-1"
                                 >
-                                  Review
+                                  {loadingReviewTaskId === task.id && <Loader2 className="w-3 h-3 animate-spin" />}
+                                  {loadingReviewTaskId === task.id ? 'Submitting...' : 'Review'}
                                 </button>
                               </>
                             )}
@@ -1302,10 +1483,16 @@ export const TasksPage: React.FC<TasksPageProps> = ({
                             {col.status === 'BLOCKED' && (
                               <button
                                 type="button"
+                                disabled={loadingTimerTaskId === task.id}
                                 onClick={() => handleStartWork(task.id)}
-                                className="px-2 py-1 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-bold cursor-pointer transition-colors flex items-center gap-1 shadow-2xs"
+                                className="px-2 py-1 rounded-lg bg-blue-600 hover:bg-blue-700 disabled:opacity-60 text-white font-bold cursor-pointer transition-colors flex items-center gap-1 shadow-2xs"
                               >
-                                <Play className="w-3 h-3" /> Unblock
+                                {loadingTimerTaskId === task.id ? (
+                                  <Loader2 className="w-3 h-3 animate-spin" />
+                                ) : (
+                                  <Play className="w-3 h-3" />
+                                )}
+                                {loadingTimerTaskId === task.id ? 'Unblocking...' : 'Unblock'}
                               </button>
                             )}
 
@@ -1314,14 +1501,20 @@ export const TasksPage: React.FC<TasksPageProps> = ({
                                 {isAdminOrManager ? (
                                   <button
                                     type="button"
+                                    disabled={loadingApproveTaskId === task.id}
                                     onClick={() => handleApproveTask(task.id)}
-                                    className="px-2.5 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-bold cursor-pointer transition-colors flex items-center gap-1 shadow-2xs"
+                                    className="px-2.5 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-700 disabled:opacity-60 text-white font-bold cursor-pointer transition-colors flex items-center gap-1 shadow-2xs"
                                   >
-                                    ✓ Approve
+                                    {loadingApproveTaskId === task.id ? (
+                                      <Loader2 className="w-3 h-3 animate-spin" />
+                                    ) : (
+                                      '✓'
+                                    )}
+                                    {loadingApproveTaskId === task.id ? 'Approving...' : 'Approve'}
                                   </button>
                                 ) : (
                                   <span className="text-[10px] font-bold text-amber-800 bg-amber-50 px-2 py-1 rounded-lg border border-amber-200">
-                                    ⏳ Review
+                                    In Review
                                   </span>
                                 )}
                               </>
@@ -1357,48 +1550,105 @@ export const TasksPage: React.FC<TasksPageProps> = ({
         >
           <div className="space-y-6">
             {/* Metadata Bar */}
-            <div className="flex flex-wrap items-center justify-between gap-3 p-3 bg-purple-50/70 rounded-xl border border-border-custom">
-              <div className="flex items-center gap-2">
-                <StatusBadge status={activeTask.status} />
-                <PriorityBadge priority={activeTask.priority} />
-                <span className="text-xs font-semibold px-2 py-0.5 bg-white text-text-secondary rounded-md border border-border-custom">
-                  {activeTask.type}
-                </span>
-              </div>
+            {(() => {
+              const delayInfo = getTaskStartDelayInfo(activeTask, timeLogs);
+              return (
+                <>
+                  <div className="flex flex-wrap items-center justify-between gap-3 p-3 bg-purple-50/70 rounded-xl border border-border-custom">
+                    <div className="flex items-center gap-2">
+                      <StatusBadge status={activeTask.status} />
+                      <PriorityBadge priority={activeTask.priority} />
+                      <span className="text-xs font-semibold px-2 py-0.5 bg-white text-text-secondary rounded-md border border-border-custom">
+                        {activeTask.type}
+                      </span>
+                    </div>
 
-              <div className="flex items-center gap-3 text-xs">
-                <div>
-                  <span className="text-text-secondary">Assignee:</span>{' '}
-                  <span className="font-semibold text-text-primary">
-                    {activeTask.assigneeName || 'Unassigned'}
-                  </span>
-                </div>
-                {activeTask.dueDate && (
-                  <div>
-                    <span className="text-text-secondary">Due:</span>{' '}
-                    <span className="font-semibold text-text-primary">{activeTask.dueDate}</span>
+                    <div className="flex items-center gap-3 text-xs">
+                      <div>
+                        <span className="text-text-secondary">Assignee:</span>{' '}
+                        <span className="font-semibold text-text-primary">
+                          {activeTask.assigneeName || 'Unassigned'}
+                        </span>
+                      </div>
+                      <div>
+                        <span className="text-text-secondary">Assigned:</span>{' '}
+                        <span className="font-semibold text-text-primary font-mono">
+                          {delayInfo
+                            ? `${delayInfo.assignedDateStr} ${delayInfo.assignedTimeStr}`
+                            : (activeTask.assignedAt || activeTask.createdAt
+                              ? formatDateDDMMYYYY(activeTask.assignedAt || activeTask.createdAt!)
+                              : '—')}
+                        </span>
+                      </div>
+                      {activeTask.dueDate && (
+                        <div>
+                          <span className="text-text-secondary">Due:</span>{' '}
+                          <span className="font-semibold text-text-primary">{formatDateDDMMYYYY(activeTask.dueDate)}</span>
+                        </div>
+                      )}
+                      {canEditTask && (
+                        <button
+                          type="button"
+                          onClick={() => openEditModal(activeTask)}
+                          className="flex items-center gap-1 px-2.5 py-1 bg-white hover:bg-purple-100 text-primary font-bold text-xs rounded-lg border border-purple-200 cursor-pointer transition-colors shadow-2xs"
+                        >
+                          <Edit3 className="w-3.5 h-3.5" /> Edit
+                        </button>
+                      )}
+                      {canDeleteTask && (
+                        <button
+                          type="button"
+                          onClick={() => setTaskToDelete(activeTask)}
+                          className="flex items-center gap-1 px-2.5 py-1 bg-rose-50 hover:bg-rose-100 text-rose-700 font-bold text-xs rounded-lg border border-rose-200 cursor-pointer transition-colors shadow-2xs"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" /> Delete
+                        </button>
+                      )}
+                    </div>
                   </div>
-                )}
-                {canEditTask && (
-                  <button
-                    type="button"
-                    onClick={() => openEditModal(activeTask)}
-                    className="flex items-center gap-1 px-2.5 py-1 bg-white hover:bg-purple-100 text-primary font-bold text-xs rounded-lg border border-purple-200 cursor-pointer transition-colors shadow-2xs"
-                  >
-                    <Edit3 className="w-3.5 h-3.5" /> Edit
-                  </button>
-                )}
-                {canDeleteTask && (
-                  <button
-                    type="button"
-                    onClick={() => setTaskToDelete(activeTask)}
-                    className="flex items-center gap-1 px-2.5 py-1 bg-rose-50 hover:bg-rose-100 text-rose-700 font-bold text-xs rounded-lg border border-rose-200 cursor-pointer transition-colors shadow-2xs"
-                  >
-                    <Trash2 className="w-3.5 h-3.5" /> Delete
-                  </button>
-                )}
-              </div>
-            </div>
+
+                  {/* Task Assignment & Start Delay Callout Banner */}
+                  {delayInfo && (
+                    <div className="p-3 bg-gradient-to-r from-purple-50 via-indigo-50/40 to-pink-50 border border-purple-200/90 rounded-xl flex items-center justify-between flex-wrap gap-2 text-xs shadow-2xs">
+                      <div className="flex items-center gap-2.5">
+                        <div className="p-1.5 rounded-lg bg-primary/10 text-primary">
+                          <Clock className="w-4 h-4" />
+                        </div>
+                        <div>
+                          <div className="font-bold text-text-primary flex items-center gap-2">
+                            <span>{delayInfo.delayText}</span>
+                            {delayInfo.isStarted && (
+                              <span className="text-[10px] bg-emerald-100 text-emerald-800 font-bold px-1.5 py-0.5 rounded-full">
+                                Started
+                              </span>
+                            )}
+                          </div>
+                          <div className="text-[11px] text-text-secondary mt-0.5 flex items-center gap-2 flex-wrap">
+                            <span>
+                              Task Assign Time:{' '}
+                              <strong className="text-text-primary font-mono">
+                                {delayInfo.assignedDateStr} at {delayInfo.assignedTimeStr}
+                              </strong>
+                            </span>
+                            {delayInfo.startTimeStr && (
+                              <>
+                                <span>•</span>
+                                <span>
+                                  First Work Started:{' '}
+                                  <strong className="text-text-primary font-mono">
+                                    {delayInfo.startDateStr} at {delayInfo.startTimeStr}
+                                  </strong>
+                                </span>
+                              </>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </>
+              );
+            })()}
 
             {/* Description */}
             {activeTask.description && (
@@ -1431,8 +1681,8 @@ export const TasksPage: React.FC<TasksPageProps> = ({
               <button
                 onClick={() => setDrawerTab('timetrack')}
                 className={`pb-2 transition-colors border-b-2 flex items-center gap-1.5 ${drawerTab === 'timetrack'
-                    ? 'border-primary text-primary'
-                    : 'border-transparent text-text-secondary hover:text-text-primary'
+                  ? 'border-primary text-primary'
+                  : 'border-transparent text-text-secondary hover:text-text-primary'
                   }`}
               >
                 <Clock className="w-3.5 h-3.5" />
@@ -1442,8 +1692,8 @@ export const TasksPage: React.FC<TasksPageProps> = ({
               <button
                 onClick={() => setDrawerTab('checklist')}
                 className={`pb-2 transition-colors border-b-2 flex items-center gap-1.5 ${drawerTab === 'checklist'
-                    ? 'border-primary text-primary'
-                    : 'border-transparent text-text-secondary hover:text-text-primary'
+                  ? 'border-primary text-primary'
+                  : 'border-transparent text-text-secondary hover:text-text-primary'
                   }`}
               >
                 <CheckSquare className="w-3.5 h-3.5" />
@@ -1465,8 +1715,8 @@ export const TasksPage: React.FC<TasksPageProps> = ({
               <button
                 onClick={() => setDrawerTab('api')}
                 className={`pb-2 transition-colors border-b-2 flex items-center gap-1.5 ${drawerTab === 'api'
-                    ? 'border-primary text-primary'
-                    : 'border-transparent text-text-secondary hover:text-text-primary'
+                  ? 'border-primary text-primary'
+                  : 'border-transparent text-text-secondary hover:text-text-primary'
                   }`}
               >
                 <Code className="w-3.5 h-3.5" />
@@ -1478,6 +1728,63 @@ export const TasksPage: React.FC<TasksPageProps> = ({
             {drawerTab === 'timetrack' && (
               <div className="space-y-4">
                 {/* Timer Action Box */}
+                {/* <div className="p-4 bg-purple-50/50 rounded-xl border border-purple-200/80 flex items-center justify-between">
+                  <div>
+                    <div className="text-xs font-semibold text-text-secondary uppercase">
+                      Server-Side Active Timer
+                    </div>
+                    <div className="font-mono text-xl font-bold text-text-primary mt-1">
+                      {isTaskTimerRunning ? (
+                        <span className="text-primary flex items-center gap-2">
+                          <span className="w-2.5 h-2.5 rounded-full bg-accent-pink animate-ping" />
+                          <span>{formatDurationHHMMSS(activeTask.totalLoggedSeconds || 0)}</span>
+                          <span className="text-xs font-semibold text-text-secondary">
+                            (Live tracking on topbar)
+                          </span>
+                        </span>
+                      ) : (
+                        <span className="font-mono text-text-primary">
+                          {formatDurationHHMMSS(activeTask.totalLoggedSeconds || 0)}
+                          <span className="text-xs font-normal text-text-secondary ml-2">
+                            ({((activeTask.totalLoggedSeconds || 0) / 3600).toFixed(2)}h total)
+                          </span>
+                        </span>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="flex gap-2">
+                    {isTaskTimerRunning ? (
+                      <button
+                        type="button"
+                        disabled={loadingTimerTaskId === activeTask.id}
+                        onClick={() => handleStopTimer(activeTask.id)}
+                        className="flex items-center gap-1.5 px-4 py-2 bg-rose-600 hover:bg-rose-700 disabled:opacity-60 text-white font-bold text-xs rounded-xl shadow-xs transition-colors cursor-pointer"
+                      >
+                        {loadingTimerTaskId === activeTask.id ? (
+                          <Loader2 className="w-4 h-4 animate-spin" />
+                        ) : (
+                          <Pause className="w-4 h-4" />
+                        )}
+                        {loadingTimerTaskId === activeTask.id ? 'Pausing...' : 'Pause Timer'}
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        disabled={loadingTimerTaskId === activeTask.id}
+                        onClick={() => handleStartTimer(activeTask.id)}
+                        className="flex items-center gap-1.5 px-4 py-2 bg-primary hover:bg-primary-hover disabled:opacity-60 text-white font-bold text-xs rounded-xl shadow-xs transition-colors cursor-pointer"
+                      >
+                        {loadingTimerTaskId === activeTask.id ? (
+                          <Loader2 className="w-4 h-4 animate-spin" />
+                        ) : (
+                          <Play className="w-4 h-4" />
+                        )}
+                        {loadingTimerTaskId === activeTask.id ? 'Starting...' : 'Start Timer'}
+                      </button>
+                    )}
+                  </div>
+                </div> */}
                 <div className="p-4 bg-purple-50/50 rounded-xl border border-purple-200/80 flex items-center justify-between">
                   <div>
                     <div className="text-xs font-semibold text-text-secondary uppercase">
@@ -1487,10 +1794,15 @@ export const TasksPage: React.FC<TasksPageProps> = ({
                       {isTaskTimerRunning ? (
                         <span className="text-primary flex items-center gap-2">
                           <span className="w-2.5 h-2.5 rounded-full bg-accent-pink animate-ping" />
-                          Logging time on server...
+                          <span>{formatDurationHHMMSS(activeTask.totalLoggedSeconds || 0)}</span>
+                          <span className="text-xs font-semibold text-text-secondary">
+                            (Live tracking on topbar)
+                          </span>
                         </span>
                       ) : (
-                        'Timer Idle'
+                        <span className="font-mono text-text-primary">
+                          {formatDurationHHMMSS(activeTask.totalLoggedSeconds || 0)}
+                        </span>
                       )}
                     </div>
                   </div>
@@ -1498,47 +1810,73 @@ export const TasksPage: React.FC<TasksPageProps> = ({
                   <div className="flex gap-2">
                     {isTaskTimerRunning ? (
                       <button
+                        type="button"
+                        disabled={loadingTimerTaskId === activeTask.id}
                         onClick={() => handleStopTimer(activeTask.id)}
-                        className="flex items-center gap-1.5 px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs rounded-xl shadow-xs transition-colors"
+                        className="flex items-center gap-1.5 px-4 py-2 bg-rose-600 hover:bg-rose-700 disabled:opacity-60 text-white font-bold text-xs rounded-xl shadow-xs transition-colors cursor-pointer"
                       >
-                        <Pause className="w-4 h-4" /> Pause Timer
+                        {loadingTimerTaskId === activeTask.id ? (
+                          <Loader2 className="w-4 h-4 animate-spin" />
+                        ) : (
+                          <Pause className="w-4 h-4" />
+                        )}
+                        {loadingTimerTaskId === activeTask.id ? 'Pausing...' : 'Pause Timer'}
                       </button>
                     ) : (
                       <button
+                        type="button"
+                        disabled={loadingTimerTaskId === activeTask.id}
                         onClick={() => handleStartTimer(activeTask.id)}
-                        className="flex items-center gap-1.5 px-4 py-2 bg-primary hover:bg-primary-hover text-white font-bold text-xs rounded-xl shadow-xs transition-colors"
+                        className="flex items-center gap-1.5 px-4 py-2 bg-primary hover:bg-primary-hover disabled:opacity-60 text-white font-bold text-xs rounded-xl shadow-xs transition-colors cursor-pointer"
                       >
-                        <Play className="w-4 h-4" /> Start Timer
+                        {loadingTimerTaskId === activeTask.id ? (
+                          <Loader2 className="w-4 h-4 animate-spin" />
+                        ) : (
+                          <Play className="w-4 h-4" />
+                        )}
+                        {loadingTimerTaskId === activeTask.id ? 'Starting...' : 'Start Timer'}
                       </button>
                     )}
                   </div>
                 </div>
-
                 {/* Session Log History */}
-                <div>
+                {/* <div>
                   <h6 className="text-xs font-bold text-text-secondary uppercase mb-2">Logged Sessions</h6>
                   <div className="divide-y divide-border-custom bg-white border border-border-custom rounded-xl max-h-48 overflow-y-auto text-xs">
                     {timeLogs.length === 0 ? (
                       <div className="p-4 text-center text-text-secondary">No time logged yet.</div>
                     ) : (
-                      timeLogs.map((log) => (
-                        <div key={log.id} className="p-3 flex items-center justify-between">
-                          <div>
-                            <span className="font-bold text-text-primary">{log.userName}</span>
-                            <span className="text-text-secondary ml-2 font-mono">
-                              {new Date(log.startTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                              {log.endTime ? ` - ${new Date(log.endTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}` : ' (active)'}
-                            </span>
-                            {log.note && <div className="text-[11px] text-text-secondary mt-0.5">{log.note}</div>}
+                      timeLogs.map((log) => {
+                        const effectiveSeconds = log.endTime
+                          ? log.durationSeconds
+                          : Math.max(
+                              log.durationSeconds,
+                              Math.floor((Date.now() - new Date(log.startTime).getTime()) / 1000)
+                            );
+                        return (
+                          <div key={log.id} className="p-3 flex items-center justify-between">
+                            <div>
+                              <span className="font-bold text-text-primary">{log.userName}</span>
+                              <span className="text-text-secondary ml-2 font-mono">
+                                {new Date(log.startTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                {log.endTime ? ` - ${new Date(log.endTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}` : ' (active)'}
+                              </span>
+                              {log.note && <div className="text-[11px] text-text-secondary mt-0.5">{log.note}</div>}
+                            </div>
+                            <div className="text-right">
+                              <span className="font-mono font-bold text-sm text-primary">
+                                {formatDurationHHMMSS(effectiveSeconds)}
+                              </span>
+                              <div className="text-[10px] text-text-secondary font-mono">
+                                {(effectiveSeconds / 3600).toFixed(2)}h
+                              </div>
+                            </div>
                           </div>
-                          <span className="font-mono font-bold text-primary">
-                            {(log.durationSeconds / 3600).toFixed(2)}h
-                          </span>
-                        </div>
-                      ))
+                        );
+                      })
                     )}
                   </div>
-                </div>
+                </div> */}
               </div>
             )}
 
@@ -1562,8 +1900,8 @@ export const TasksPage: React.FC<TasksPageProps> = ({
                       className="h-full bg-gradient-to-r from-primary to-accent-pink rounded-full transition-all duration-300"
                       style={{
                         width: `${checklist.length > 0
-                            ? (checklist.filter((c) => c.isDone).length / checklist.length) * 100
-                            : 0
+                          ? (checklist.filter((c) => c.isDone).length / checklist.length) * 100
+                          : 0
                           }%`,
                       }}
                     />
@@ -1581,10 +1919,15 @@ export const TasksPage: React.FC<TasksPageProps> = ({
                   />
                   <button
                     type="submit"
-                    disabled={!newChecklistText.trim()}
-                    className="px-4 py-2 bg-primary hover:bg-primary-hover text-white text-xs font-bold rounded-xl shadow-xs transition-colors disabled:opacity-50 cursor-pointer shrink-0"
+                    disabled={!newChecklistText.trim() || isAddingChecklist}
+                    className="px-4 py-2 bg-primary hover:bg-primary-hover disabled:opacity-50 text-white text-xs font-bold rounded-xl shadow-xs transition-colors cursor-pointer shrink-0 flex items-center gap-1.5"
                   >
-                    Add Item
+                    {isAddingChecklist ? (
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    ) : (
+                      <Plus className="w-3.5 h-3.5" />
+                    )}
+                    {isAddingChecklist ? 'Adding...' : 'Add Item'}
                   </button>
                 </form>
 
@@ -1600,17 +1943,21 @@ export const TasksPage: React.FC<TasksPageProps> = ({
                         key={item.id}
                         className="flex items-center gap-3 p-2.5 bg-white border border-border-custom hover:bg-purple-50/40 rounded-xl transition-colors"
                       >
-                        <input
-                          type="checkbox"
-                          checked={item.isDone}
-                          onChange={() => handleToggleChecklist(item.id)}
-                          className="w-4 h-4 text-primary rounded accent-primary cursor-pointer"
-                        />
+                        {loadingChecklistId === item.id ? (
+                          <Loader2 className="w-4 h-4 animate-spin text-primary shrink-0" />
+                        ) : (
+                          <input
+                            type="checkbox"
+                            checked={item.isDone}
+                            onChange={() => handleToggleChecklist(item.id)}
+                            className="w-4 h-4 text-primary rounded accent-primary cursor-pointer shrink-0"
+                          />
+                        )}
                         <span
                           onClick={() => handleToggleChecklist(item.id)}
                           className={`text-xs flex-1 cursor-pointer select-none ${item.isDone
-                              ? 'line-through text-text-secondary'
-                              : 'text-text-primary font-medium'
+                            ? 'line-through text-text-secondary'
+                            : 'text-text-primary font-medium'
                             }`}
                         >
                           {item.text}
@@ -1622,11 +1969,16 @@ export const TasksPage: React.FC<TasksPageProps> = ({
                         )}
                         <button
                           type="button"
+                          disabled={deletingChecklistId === item.id}
                           onClick={() => handleDeleteChecklistItem(item.id)}
-                          className="p-1 text-gray-400 hover:text-rose-600 rounded transition-colors cursor-pointer shrink-0"
+                          className="p-1 text-gray-400 hover:text-rose-600 rounded transition-colors cursor-pointer shrink-0 disabled:opacity-50"
                           title="Delete checklist item"
                         >
-                          <Trash2 className="w-3.5 h-3.5" />
+                          {deletingChecklistId === item.id ? (
+                            <Loader2 className="w-3.5 h-3.5 animate-spin text-rose-500" />
+                          ) : (
+                            <Trash2 className="w-3.5 h-3.5" />
+                          )}
                         </button>
                       </div>
                     ))
@@ -1649,10 +2001,10 @@ export const TasksPage: React.FC<TasksPageProps> = ({
                       <div
                         key={comm.id}
                         className={`p-3 rounded-xl border ${comm.type === 'QUERY'
-                            ? 'bg-amber-50/40 border-amber-200'
-                            : comm.type === 'BLOCKER'
-                              ? 'bg-rose-50/40 border-rose-200'
-                              : 'bg-white border-border-custom'
+                          ? 'bg-amber-50/40 border-amber-200'
+                          : comm.type === 'BLOCKER'
+                            ? 'bg-rose-50/40 border-rose-200'
+                            : 'bg-white border-border-custom'
                           }`}
                       >
                         <div className="flex items-center justify-between mb-1.5">

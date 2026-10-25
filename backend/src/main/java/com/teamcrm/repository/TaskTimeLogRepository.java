@@ -18,6 +18,17 @@ public interface TaskTimeLogRepository extends JpaRepository<TaskTimeLog, Long> 
     @Query("SELECT l FROM TaskTimeLog l WHERE l.user.id = :userId AND l.endTime IS NULL")
     Optional<TaskTimeLog> findActiveLogByUserId(@Param("userId") Long userId);
 
+    @Query("SELECT l FROM TaskTimeLog l WHERE l.user.id = :userId AND l.endTime IS NULL ORDER BY l.startTime DESC")
+    List<TaskTimeLog> findActiveLogsByUserId(@Param("userId") Long userId);
+
+    @Query("SELECT l FROM TaskTimeLog l WHERE l.user.id = :userId AND l.task.id = :taskId AND l.endTime IS NULL")
+    Optional<TaskTimeLog> findActiveLogByUserIdAndTaskId(@Param("userId") Long userId, @Param("taskId") Long taskId);
+
+    @Query("SELECT l FROM TaskTimeLog l WHERE l.task.id = :taskId AND l.endTime IS NULL")
+    List<TaskTimeLog> findByTaskIdAndEndTimeIsNull(@Param("taskId") Long taskId);
+
+    Optional<TaskTimeLog> findFirstByTaskIdAndUserIdAndSourceOrderByUpdatedAtDesc(Long taskId, Long userId, String source);
+
     @Query("SELECT l FROM TaskTimeLog l WHERE l.endTime IS NULL")
     List<TaskTimeLog> findAllActiveLogs();
 

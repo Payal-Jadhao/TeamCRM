@@ -24,6 +24,7 @@ import {
   UserCheck
 } from 'lucide-react';
 import { PageLoader } from '../components/ui/LoadingSpinner';
+import { formatDateDDMMYYYY, formatDateTimeDDMMYYYY } from '../utils/dateUtils';
 
 interface DashboardPageProps {
   onOpenTask: (taskId: number) => void;
@@ -294,7 +295,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onOpenTask, onNavi
                       <span className="text-text-secondary text-[11px] hidden sm:inline">by {log.actorEmail}</span>
                     </div>
                     <span className="text-text-secondary text-[11px]">
-                      {log.createdAt ? new Date(log.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'recently'}
+                      {log.createdAt ? formatDateTimeDDMMYYYY(log.createdAt) : 'recently'}
                     </span>
                   </div>
                 ))
@@ -496,7 +497,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onOpenTask, onNavi
                         <div>
                           <span className="font-semibold text-text-primary block">{m.title}</span>
                           <span className="text-[11px] text-text-secondary">
-                            {new Date(m.startTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                            {formatDateTimeDDMMYYYY(m.startTime)}
                           </span>
                         </div>
                       </div>

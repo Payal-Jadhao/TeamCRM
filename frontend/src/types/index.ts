@@ -77,6 +77,9 @@ export interface Task {
   checklistTotal: number;
   checklistCompleted: number;
   isTimerRunning: boolean;
+  createdAt?: string;
+  assignedAt?: string;
+  firstStartedAt?: string;
 }
 
 export interface ChecklistItem {
@@ -112,6 +115,7 @@ export interface RunningTimer {
   startTime: string;
   elapsedSeconds: number;
   note?: string;
+  accumulatedSeconds?: number;
 }
 
 export interface TaskComment {

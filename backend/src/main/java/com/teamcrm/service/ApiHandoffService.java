@@ -193,6 +193,24 @@ public class ApiHandoffService {
     }
 
     @Transactional
+    public void deleteApiDoc(Long docId, Long currentUserId, boolean isAdmin) {
+        ApiDoc doc = apiDocRepository.findById(docId)
+                .orElseThrow(() -> new RuntimeException("API specification not found"));
+
+        boolean isAuthor = doc.getCreatedBy() != null && doc.getCreatedBy().getId().equals(currentUserId);
+        if (!isAdmin && !isAuthor) {
+            throw new AccessDeniedException("You are only permitted to delete your own published API specifications.");
+        }
+
+        apiDocRepository.delete(doc);
+
+        auditLogRepository.save(new AuditLog(
+                currentUserId, null, "API_DOC_DELETE", "API_DOC",
+                docId.toString(), null, "Deleted API spec: " + doc.getHttpMethod() + " " + doc.getEndpoint()
+        ));
+    }
+
+    @Transactional
     public ApiDocResponseDto updateStatus(Long docId, UpdateApiDocStatusRequest req, Long actorId) {
         ApiDoc doc = apiDocRepository.findById(docId)
                 .orElseThrow(() -> new RuntimeException("API doc not found"));

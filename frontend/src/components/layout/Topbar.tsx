@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { timeApi, notificationApi, taskApi, crmApi } from '../../services/api';
 import { RunningTimer, NotificationItem, Task, Deal, Lead } from '../../types';
+import { formatDateTimeDDMMYYYY } from '../../utils/dateUtils';
 import {
   Search,
   Plus,
@@ -21,6 +22,7 @@ import {
   ArrowRight,
   Briefcase,
   Users,
+  Loader2,
 } from 'lucide-react';
 
 interface TopbarProps {
@@ -117,10 +119,19 @@ export const Topbar: React.FC<TopbarProps> = ({
     fetchActiveTimer();
     fetchNotifications();
     const interval = setInterval(fetchActiveTimer, 10000);
-    return () => clearInterval(interval);
+    const handleTimerUpdate = () => {
+      fetchActiveTimer();
+    };
+    window.addEventListener('teamcrm_timer_update', handleTimerUpdate);
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener('teamcrm_timer_update', handleTimerUpdate);
+    };
   }, []);
 
-  // Tick the live clock locally each second using the server start_time
+  const [isStoppingTimer, setIsStoppingTimer] = useState(false);
+
+  // Tick the live clock locally each second using the server start_time + accumulatedSeconds
   useEffect(() => {
     if (!runningTimer || !runningTimer.startTime) {
       setElapsedDisplay('00:00:00');
@@ -128,10 +139,12 @@ export const Topbar: React.FC<TopbarProps> = ({
     }
 
     const startMs = new Date(runningTimer.startTime).getTime();
+    const baseSec = runningTimer.accumulatedSeconds || 0;
 
     const updateTick = () => {
       const nowMs = Date.now();
-      const diffSec = Math.max(0, Math.floor((nowMs - startMs) / 1000));
+      const sessionSec = Math.max(0, Math.floor((nowMs - startMs) / 1000));
+      const diffSec = baseSec + sessionSec;
       const hours = Math.floor(diffSec / 3600);
       const minutes = Math.floor((diffSec % 3600) / 60);
       const seconds = diffSec % 60;
@@ -146,12 +159,17 @@ export const Topbar: React.FC<TopbarProps> = ({
   }, [runningTimer]);
 
   const handleStopTimer = async () => {
+    if (!runningTimer) return;
+    setIsStoppingTimer(true);
     try {
-      await timeApi.stopTimer();
+      await timeApi.stopTimer(runningTimer.taskId, 'Session paused');
       setRunningTimer(null);
       setShowTimerActions(false);
+      window.dispatchEvent(new Event('teamcrm_timer_update'));
     } catch (e) {
       console.error('Failed to stop timer', e);
+    } finally {
+      setIsStoppingTimer(false);
     }
   };
 
@@ -440,9 +458,15 @@ export const Topbar: React.FC<TopbarProps> = ({
                   </button>
                   <button
                     onClick={handleStopTimer}
-                    className="flex items-center justify-center gap-1.5 py-1.5 px-2 bg-rose-50 text-rose-600 hover:bg-rose-100 text-xs font-semibold rounded-lg"
+                    disabled={isStoppingTimer}
+                    className="flex items-center justify-center gap-1.5 py-1.5 px-2 bg-rose-50 text-rose-600 hover:bg-rose-100 disabled:opacity-60 text-xs font-semibold rounded-lg cursor-pointer transition-colors"
                   >
-                    <Square className="w-3.5 h-3.5" /> Pause Timer
+                    {isStoppingTimer ? (
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    ) : (
+                      <Square className="w-3.5 h-3.5" />
+                    )}
+                    {isStoppingTimer ? 'Pausing...' : 'Pause Timer'}
                   </button>
                 </div>
               </div>
@@ -502,7 +526,7 @@ export const Topbar: React.FC<TopbarProps> = ({
                       <div className="font-semibold text-text-primary mb-0.5">{n.title}</div>
                       <div className="text-text-secondary line-clamp-2">{n.message}</div>
                       <div className="text-[10px] text-gray-400 mt-1">
-                        {new Date(n.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                        {formatDateTimeDDMMYYYY(n.createdAt)}
                       </div>
                     </div>
                   ))

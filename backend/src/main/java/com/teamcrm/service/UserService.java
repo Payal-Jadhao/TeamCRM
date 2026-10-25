@@ -107,8 +107,13 @@ public class UserService {
             Set<Permission> defaultPerms = role.getPermissions() != null ? new HashSet<>(role.getPermissions()) : new HashSet<>();
             user.setExtraPermissions(defaultPerms);
         } else {
-            // Employee initially gets no extra permissions
-            user.setExtraPermissions(new HashSet<>());
+            // Employee initially gets TIME_TRACKING, DISCUSSIONS, and API_HANDOFF module permissions (managed by admin)
+            Set<Permission> defaultPerms = new HashSet<>();
+            List<String> targetModules = List.of("TIME_TRACKING", "DISCUSSIONS", "API_HANDOFF");
+            for (String mod : targetModules) {
+                defaultPerms.addAll(permissionRepository.findByModule(mod));
+            }
+            user.setExtraPermissions(defaultPerms);
         }
 
         User saved = userRepository.save(user);

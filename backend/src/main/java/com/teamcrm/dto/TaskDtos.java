@@ -2,6 +2,7 @@ package com.teamcrm.dto;
 
 import jakarta.validation.constraints.NotBlank;
 import java.math.BigDecimal;
+import java.time.Instant;
 import java.time.LocalDate;
 
 public class TaskDtos {
@@ -74,6 +75,9 @@ public class TaskDtos {
             Long totalLoggedSeconds,
             Integer checklistTotal,
             Integer checklistCompleted,
-            Boolean isTimerRunning
+            Boolean isTimerRunning,
+            Instant createdAt,
+            Instant assignedAt,
+            Instant firstStartedAt
     ) {}
 }
